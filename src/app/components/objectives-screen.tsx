@@ -295,7 +295,7 @@ function deriveActions(items: Kpi[]): {
   return { primary, secondary: recs };
 }
 
-export function ObjectivesScreen({ onSimulateFix }: { onSimulateFix?: () => void }) {
+export function ObjectivesScreen() {
   const system = useMemo(() => deriveSystemStatus(kpis), []);
   const actions = useMemo(() => deriveActions(kpis), []);
 

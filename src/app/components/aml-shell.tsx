@@ -22,11 +22,10 @@ export const C = {
 
 export const FONT = "'Inter', 'Noto Sans Thai', system-ui, sans-serif";
 
-export type ScreenId = "objectives" | "overview" | "aria";
+export type ScreenId = "objectives" | "aria";
 
 const TABS: { id: ScreenId; label: string }[] = [
   { id: "objectives", label: "Objectives & KPIs" },
-  { id: "overview", label: "Detection Overview" },
   { id: "aria", label: "ARIA Assistant" },
 ];
 
