@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, AlertTriangle, Bell, Bot, Clock, Info, ShieldCheck, Sparkles } from "lucide-react";
 import { LangToggle } from "./aml-language";
 
@@ -230,6 +230,7 @@ function NotificationBell({ onSwitchScreen }: { onSwitchScreen: (s: ScreenId) =>
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotifItem[]>(INIT_NOTIFS);
   const ref = useRef<HTMLDivElement>(null);
+  const panelId = useId();
   const unread = items.some((i) => i.unread);
 
   useEffect(() => {
@@ -256,6 +257,8 @@ function NotificationBell({ onSwitchScreen }: { onSwitchScreen: (s: ScreenId) =>
           cursor: "pointer",
         }}
         aria-label="Notifications"
+        aria-expanded={open}
+        aria-controls={panelId}
       >
         <Bell size={15} />
         {unread && (
@@ -275,6 +278,9 @@ function NotificationBell({ onSwitchScreen }: { onSwitchScreen: (s: ScreenId) =>
       </button>
       {open && (
         <div
+          id={panelId}
+          role="region"
+          aria-label="Notifications"
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",

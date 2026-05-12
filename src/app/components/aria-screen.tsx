@@ -763,6 +763,7 @@ export function AriaScreen({
                     if (e.key === "Enter") handleSend();
                   }}
                   placeholder="พิมพ์คำถามหรือคำสั่ง... / Type a command or question..."
+                  aria-label="ARIA assistant message"
                   style={{
                     flex: 1,
                     background: "transparent",
@@ -975,6 +976,7 @@ export function AriaScreen({
           value={rollbackInput}
           onChange={(e) => setRollbackInput(e.target.value)}
           placeholder='Type "ROLLBACK"'
+          aria-label="Type ROLLBACK to confirm"
           style={{
             width: "100%",
             padding: "10px 12px",

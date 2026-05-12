@@ -59,8 +59,8 @@ export function L({
   th,
   sep = " / ",
 }: {
-  en: string;
-  th: string;
+  en: React.ReactNode;
+  th: React.ReactNode;
   sep?: string;
 }) {
   return (
@@ -154,14 +154,14 @@ export function LangSkin() {
       /* EN mode: hide TH spans + bilingual separators + any inline-Noto-Thai spans */
       .lang-en .lang-th,
       .lang-en .lang-bi-sep,
-      .lang-en [style*="Noto Sans Thai"]:not(.lang-en) { display: none !important; }
+      .lang-en span[style*="Noto Sans Thai"]:not(.lang-en) { display: none !important; }
 
       /* TH mode: hide EN spans + bilingual separators */
       .lang-th .lang-en,
       .lang-th .lang-bi-sep { display: none !important; }
       /* Make sure TH spans still render */
       .lang-th .lang-th,
-      .lang-th [style*="Noto Sans Thai"] { display: inline !important; }
+      .lang-th span[style*="Noto Sans Thai"] { display: inline !important; }
     `}</style>
   );
 }

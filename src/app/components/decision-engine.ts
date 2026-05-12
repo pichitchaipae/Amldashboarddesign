@@ -151,7 +151,7 @@ export function evaluate(s: Signals): Decision {
     };
   }
 
-  // Fallback — default to retraining recommendation if no clean rule matched
+  // Fallback — default to threshold tuning if no clean rule matched
   return {
     tag: "TUNE THRESHOLD / SENSITIVITY",
     tone: "yellow",

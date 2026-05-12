@@ -245,6 +245,7 @@ export function AmlChatbot({ decision, signals, onExplain, onSimulate, onShowKpi
           }}
           placeholder="Ask the assistant…"
           className="h-9 bg-slate-50 border-slate-200"
+          aria-label="Chat message"
           style={{ fontSize: 12 }}
         />
         <Button onClick={handleSend} className="h-9 w-9 p-0 bg-slate-900 hover:bg-slate-800" aria-label="Send">

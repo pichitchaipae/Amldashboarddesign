@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, X as XIcon, RefreshCcw, AlertOctagon } from "lucide-react";
 import { C, FONT } from "./aml-shell";
 
@@ -9,6 +9,23 @@ let TOAST_SEQ = 1;
 type Listener = (t: Toast[]) => void;
 const listeners = new Set<Listener>();
 let current: Toast[] = [];
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "area[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex=\"-1\"])",
+].join(",");
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [] as HTMLElement[];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => !el.hasAttribute("disabled") && el.tabIndex !== -1,
+  );
+}
 
 function setToasts(next: Toast[]) {
   current = next;
@@ -33,6 +50,9 @@ export function ToastHost() {
   }, []);
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       style={{
         position: "fixed",
         top: 88,
@@ -94,6 +114,28 @@ export function ModalShell({
   footer: React.ReactNode;
   tone?: "blue" | "amber" | "red";
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const lastActiveRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const subtitleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document !== "undefined") {
+      lastActiveRef.current = document.activeElement as HTMLElement | null;
+    }
+    const focusables = getFocusableElements(dialogRef.current);
+    const focusTarget = focusables[0] ?? dialogRef.current;
+    focusTarget?.focus();
+    if (typeof document === "undefined") return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      lastActiveRef.current?.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   const accent = tone === "red" ? C.red : tone === "amber" ? C.amber : C.blue;
   return (
@@ -113,6 +155,37 @@ export function ModalShell({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={subtitle ? subtitleId : undefined}
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            onClose();
+            return;
+          }
+          if (e.key !== "Tab") return;
+          if (typeof document === "undefined") return;
+          const focusables = getFocusableElements(dialogRef.current);
+          if (focusables.length === 0) {
+            e.preventDefault();
+            return;
+          }
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const active = document.activeElement as HTMLElement | null;
+          if (e.shiftKey) {
+            if (active === first || active === dialogRef.current) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else if (active === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }}
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "min(560px, 100%)",
@@ -131,8 +204,12 @@ export function ModalShell({
             <div style={{ fontSize: 11, color: accent, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 700 }}>
               {tone === "red" ? "Critical" : tone === "amber" ? "Confirm" : "Action"}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{title}</div>
-            {subtitle && <div style={{ fontSize: 12, color: C.subtext, marginTop: 4, lineHeight: 1.55 }}>{subtitle}</div>}
+            <div id={titleId} style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{title}</div>
+            {subtitle && (
+              <div id={subtitleId} style={{ fontSize: 12, color: C.subtext, marginTop: 4, lineHeight: 1.55 }}>
+                {subtitle}
+              </div>
+            )}
           </div>
           <button
             type="button"

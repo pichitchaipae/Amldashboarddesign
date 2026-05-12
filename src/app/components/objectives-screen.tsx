@@ -487,7 +487,11 @@ export function ObjectivesScreen({ onSimulateFix }: { onSimulateFix?: () => void
               {kpis.map((k) => (
                 <Tooltip key={`sys-${k.id}`}>
                   <TooltipTrigger asChild>
-                    <span className={`w-2 h-2 rounded-full ${statusMeta[k.status].dot}`} aria-label={k.name} />
+                    <span
+                      className={`w-2 h-2 rounded-full ${statusMeta[k.status].dot}`}
+                      aria-label={k.name}
+                      tabIndex={0}
+                    />
                   </TooltipTrigger>
                   <TooltipContent className="text-xs">{k.name} — {statusMeta[k.status].label}</TooltipContent>
                 </Tooltip>
@@ -774,6 +778,7 @@ export function ObjectivesScreen({ onSimulateFix }: { onSimulateFix?: () => void
             step={0.05}
             value={thresholdDraft}
             onChange={(e) => setThresholdDraft(parseFloat(e.target.value))}
+            aria-label="Detection threshold"
             style={{ flex: 1, accentColor: "#1E6FD9" }}
           />
           <span style={{ fontSize: 12, color: "#8FA3BC" }}>0.80</span>
