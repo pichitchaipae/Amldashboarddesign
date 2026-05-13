@@ -1,0 +1,40 @@
+﻿Ruleset 1,,,,,,
+Condition,RS 1-1 (Best Case),RS1-2 (MCC Fail),RS1-3 (Bad Precision),RS1-4 (Bad Recall),RS1-5 (Bad F1 Score ),RS1-6 (Bad Accuracy)
+MCC (Pass/Fail),Pass,Fail,Pass,Pass,Pass,Pass
+Precision (Good /Bad),Good,Any,Bad,Good,Good,Good
+Recall (Good/Bad),Good,Any,Any,Bad,Good,Good
+F1 Score (Good / Bad),Good,Any,Any,Any,Bad,Good
+Accuracy (Good / Bad),Good,Any,Any,Any,Any,Bad
+Metric Stability (Pass/Fail),Pass,Fail,Fail,Fail,Fail,Fail
+,,P,,,,
+Ruleset 2,,,,,,
+Condition,RS 2-1 (Best Case),RS 2-2 (Graph Density Changed),RS 2-3 (Node Centrality Changed),RS 2-4 (Motif Similarity Changed),,
+Graph Density (Stable / Changed),Stable,Changed,Stable,Stable,,
+Node Centrality (Stable / Changed),Stable,Any,Changed,Stable,,
+Motif Similarity (Stable / Changed),Stable,Any,Any,Changed,,
+Pattern Logic (Normal / Changed),Normal,Changed,Changed,Changed,,
+,,,,,,
+,,,,,,
+Ruleset 3,,,,,,
+Condition,RS 3-1 (Best Case),RS 3-2 (Shifted Feat. Importance),RS 3-3 (Shifted Edge Weighted),RS 3-4 (Out of Range Learning Rate),RS 3-5 (Out of Range Tree Depth),
+Feature Importance (Normal/Shifted),Normal,Shifted,Normal,Normal,Normal,
+Edge Weight (Normal / Shifted),Normal,Any,Shifted,Normal,Normal,
+Learning Rate (Optimal / Out of Range),Optimal,Any,Any,Out of Range,Optimal,
+Tree Depth (Optimal / Out of Range),Optimal,Any,Any,Any,Out of Range,
+Feature Power (Good / Bad),Good,Bad,Bad,Bad,Bad,
+,,,,,,
+,,,,,,
+,,,,,,
+Ruleset 4,,,,,,
+Condition,RS 4-1 (Best Case),RS 4-2 (High Missing Value Rate),RS 4-3 (High Label Imbalance ),RS 4-4 (Drifted Data Distribution),,
+Missing Value %(OK/ High),OK,High,OK,OK,,
+Label Imbalance (OK/High),OK,Any,High,OK,,
+Data Distribution [PSI] (Stable /Drifted),Stable,Any,Any,Drifted,,
+Data Quality (Good/Bad),Good,Bad,Bad,Bad,,
+,,,,,,
+Ruleset 5,,,,,,
+Condition,RS 5-1 (Best Case),"RS 5-2 (Throughput, Latency)","RS 5-3 (Throughput , CPU)",RS 5-4 (Slow latency ),RS 5-5 (Critical CPU/RAM Usage),RS 5-6
+Throughput (Good/Low),Good,Low,Low,Good,Good,Low
+Latency (OK/ Slow),OK,Slow,OK,Slow,OK,OK
+CPU / RAM Usage (OK/Critical),OK,Any,Critical,Any,Critical,OK
+System Efficiency (OK/ Critical),OK,Critical,Critical,Critical,Critical,OK

@@ -1,0 +1,20 @@
+﻿Ruleset 6,,,,
+Condition,RS 6-1 (Best Case),RS 6-2 (Metric Stability Failed),RS 6-3 (Pattern Logic Changed),
+Metric Stability (Pass / Fail),Pass,Fail,Pass,
+Pattern Logic (Normal/ Changed),Normal,Any,Changed,
+Concept Drift (Stable /Drifted),Stable,Drifted,Drifted,
+,,,,
+,,,,
+Ruleset 7,,,,
+Condition,RS 7-1 (Best Case),RS 7-2 (Bad Feat. Power),RS 7-3 (Bad Data Quality),
+Feature Power (Good / Bad),Good,Bad,Good,
+Data Quality (Good /Bad),Good,Any,Bad,
+Data Drift (Stable /Drifted),Stable,Drifted,Drifted,
+,,,,
+,,,,
+Ruleset 8 ,,,,
+Condition,RS 8-1 (Best Case),RS 8-2 (Concept Drift),RS 8-3 (Data Drift),RS 8-4 (System Efficiency Degraded)
+Concept Drift (Stable /Drifted),Stable,Drifted,Stable,Stable
+Data Drift (Stable /Drifted),Stable,Any,Drifted,Stable
+System Efficiency (OK/ Critical),OK,Any,Any,Critical
+OPTION,Still Valid (GO),Retrained Model,Tune Model,Optimize System

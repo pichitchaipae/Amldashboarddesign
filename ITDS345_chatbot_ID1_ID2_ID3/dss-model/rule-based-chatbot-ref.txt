@@ -1,0 +1,255 @@
+/* ================================================
+   RULE SET 1 — Metric Stability
+   Input variables: MCC, Precision, Recall,
+                    F1-Score, Accuracy
+   Output: Metric Stability = Pass / Fail
+   ================================================ */
+
+rule-1-1:
+if MCC       >= 0.60 and
+   Precision >= 0.86 and
+   Recall    >= 0.85 and
+   F1_Score  >= 0.82 and
+   Accuracy  >= 0.80
+then Metric_Stability = Pass.
+
+rule-1-2:
+if MCC < 0.60
+then Metric_Stability = Fail.
+
+rule-1-3:
+if MCC       >= 0.60 and
+   Precision <  0.86
+then Metric_Stability = Fail.
+
+rule-1-4:
+if MCC       >= 0.60 and
+   Precision >= 0.86 and
+   Recall    <  0.85
+then Metric_Stability = Fail.
+
+rule-1-5:
+if MCC       >= 0.60 and
+   Precision >= 0.86 and
+   Recall    >= 0.85 and
+   F1_Score  <  0.82
+then Metric_Stability = Fail.
+
+rule-1-6:
+if MCC       >= 0.60 and
+   Precision >= 0.86 and
+   Recall    >= 0.85 and
+   F1_Score  >= 0.82 and
+   Accuracy  <  0.80
+then Metric_Stability = Fail.
+
+
+
+
+/* ================================================
+   RULE SET 2 — Pattern Logic
+   Input variables: Graph Density, Node Centrality,
+                    Motif Similarity
+   Output: Pattern Logic = Normal / Changed
+   ================================================ */
+
+rule-2-1:
+if Graph_Density    >= 0.1 and Graph_Density <= 0.6 and
+   Node_Centrality  >  0.4 and
+   Motif_Similarity >  0.6
+then Pattern_Logic = Normal.
+
+rule-2-2:
+if Graph_Density < 0.1 or Graph_Density > 0.6
+then Pattern_Logic = Changed.
+
+rule-2-3:
+if Graph_Density    >= 0.1 and Graph_Density <= 0.6 and
+   Node_Centrality  <= 0.4
+then Pattern_Logic = Changed.
+
+rule-2-4:
+if Graph_Density    >= 0.1 and Graph_Density <= 0.6 and
+   Node_Centrality  >  0.4 and
+   Motif_Similarity <= 0.6
+then Pattern_Logic = Changed.
+
+/* ================================================
+   RULE SET 3 — Feature Power
+   Input variables: Feature Importance, Edge Weights,
+                    Learning Rate, Tree Depth
+   Output: Feature Power = Good / Bad
+   ================================================ */
+
+rule-3-1:
+if Feature_Importance >  0.05 and
+   Edge_Weights       >  0.30 and
+   Learning_Rate      >= 0.001 and Learning_Rate <= 0.01 and
+   Tree_Depth         >= 3     and Tree_Depth    <= 8
+then Feature_Power = Good.
+
+rule-3-2:
+if Feature_Importance <= 0.05
+then Feature_Power = Bad.
+
+rule-3-3:
+if Feature_Importance >  0.05 and
+   Edge_Weights       <= 0.30
+then Feature_Power = Bad.
+
+rule-3-4:
+if Feature_Importance >  0.05 and
+   Edge_Weights       >  0.30 and
+   (Learning_Rate < 0.001 or Learning_Rate > 0.01)
+then Feature_Power = Bad.
+
+rule-3-5:
+if Feature_Importance >  0.05 and
+   Edge_Weights       >  0.30 and
+   Learning_Rate      >= 0.001 and Learning_Rate <= 0.01 and
+   (Tree_Depth < 3 or Tree_Depth > 8)
+then Feature_Power = Bad.
+
+/* ================================================
+   RULE SET 4 — Data Quality
+   Input variables: Missing Value %, Label Imbalance,
+                    Data Distribution (PSI)
+   Output: Data Quality = Good / Bad
+   ================================================ */
+
+rule-4-1:
+if Missing_Value_Pct  <  0.05 and
+   Label_Imbalance    <  10   and
+   PSI                <  0.10
+then Data_Quality = Good.
+
+rule-4-2:
+if Missing_Value_Pct >= 0.05
+then Data_Quality = Bad.
+
+rule-4-3:
+if Missing_Value_Pct <  0.05 and
+   Label_Imbalance   >= 10
+then Data_Quality = Bad.
+
+rule-4-4:
+if Missing_Value_Pct <  0.05 and
+   Label_Imbalance   <  10   and
+   PSI               >= 0.10
+then Data_Quality = Bad.
+
+/* ================================================
+   RULE SET 5 — System Efficiency
+   Input variables: Throughput, Latency,
+                    CPU/RAM Usage
+   Output: System Efficiency = OK / Critical
+   ================================================ */
+
+rule-5-1:
+if Throughput    >= 100  and
+   Latency_ms    <= 300  and
+   CPU_RAM_Usage <= 0.80
+then System_Efficiency = OK.
+
+rule-5-2:
+if Throughput  <  100 and
+   Latency_ms  >  300
+then System_Efficiency = Critical.
+
+rule-5-3:
+if Throughput     <  100 and
+   CPU_RAM_Usage  >  0.80
+then System_Efficiency = Critical.
+
+rule-5-4:
+if Throughput    >= 100  and
+   Latency_ms    >  300
+then System_Efficiency = Critical.
+
+rule-5-5:
+if Throughput    >= 100  and
+   Latency_ms    <= 300  and
+   CPU_RAM_Usage >  0.80
+then System_Efficiency = Critical.
+
+rule-5-6:
+if Throughput < 100
+   Latency_ms    <= 300  and
+   CPU_RAM_Usage <= 0.80
+then System_Efficiency = OK.
+
+
+
+/* ================================================
+   RULE SET 6 — Concept Drift
+   Input variables: Metric Stability,
+                    Pattern Logic
+   Output: Concept Drift = Stable / Drifted
+   ================================================ */
+
+rule-6-1:
+if Metric_Stability = Pass   and
+   Pattern_Logic    = Normal
+then Concept_Drift = Stable.
+
+rule-6-2:
+if Metric_Stability = Fail
+then Concept_Drift = Drifted.
+
+rule-6-3:
+if Metric_Stability = Pass and
+   Pattern_Logic    = Changed
+then Concept_Drift = Drifted.
+
+
+/* ================================================
+   RULE SET 7 — Data Drift
+   Input variables: Feature Power,
+                    Data Quality
+   Output: Data Drift = Stable / Drifted
+   ================================================ */
+
+rule-7-1:
+if Feature_Power = Good and
+   Data_Quality  = Good
+then Data_Drift = Stable.
+
+rule-7-2:
+if Feature_Power = Bad
+then Data_Drift = Drifted.
+
+rule-7-3:
+if Feature_Power = Good and
+   Data_Quality  = Bad
+then Data_Drift = Drifted.
+
+
+/* ================================================
+   RULE SET 8 — Final Action Selection
+   Input variables: Concept Drift,
+                    Data Drift,
+                    System Efficiency
+   Output: OPTION (Final Action)
+   ================================================ */
+
+rule-8-1:
+if Concept_Drift     = Stable   and
+   Data_Drift        = Stable   and
+   System_Efficiency = Adequate
+then OPTION = Still_Valid_GO.
+
+rule-8-2:
+if Concept_Drift = Drifted
+then OPTION = Retrain_Model.
+
+rule-8-3:
+if Concept_Drift     = Stable and
+   Data_Drift        = Drifted
+then OPTION = Tune_Model.
+
+rule-8-4:
+if Concept_Drift     = Stable   and
+   Data_Drift        = Stable   and
+   System_Efficiency = Degraded
+then OPTION = Optimize_System.
+
