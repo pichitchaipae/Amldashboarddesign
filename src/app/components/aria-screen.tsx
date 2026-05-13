@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Send,
@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   AlertOctagon,
   ChevronRight,
+  ChevronDown,
   Cpu,
   Database,
   Bot,
@@ -15,7 +16,8 @@ import {
 } from "lucide-react";
 import { KpiMiniBar, UnifiedNav, type ScreenId as ShellScreenId } from "./aml-shell";
 import { ModalButton, ModalShell, pushToast } from "./aml-interactions";
-import { ChevronDown } from "lucide-react";
+import { L, useLang } from "./aml-language";
+import { evaluate, matchIntent, type AllSignals, type ChatResponse, type Decision, type RuleTrace, type ChatContext } from "./decision-engine";
 
 const C = {
   base: "#0A1628",
@@ -36,25 +38,23 @@ const C = {
 
 const FONT = "'Inter', 'Noto Sans Thai', system-ui, sans-serif";
 
-type KpiStatus = "pass" | "warn" | "fail";
+const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+const fmtRatio = (n: number, digits = 2) => n.toFixed(digits);
 
-const kpis: {
-  en: string;
-  th: string;
-  value: string;
-  target: string;
-  status: KpiStatus;
-}[] = [
-  { en: "Recall / Detection Rate", th: "อัตราการตรวจจับ", value: "78.0%", target: "≥ 85%", status: "fail" },
-  { en: "False Positive Rate", th: "อัตราแจ้งเตือนผิด", value: "16.4%", target: "≤ 20%", status: "pass" },
-  { en: "Flagged Rate", th: "อัตราการแจ้งเตือน", value: "8.7%", target: "≤ 5%", status: "warn" },
-  { en: "Pattern Coverage", th: "ครอบคลุมรูปแบบ", value: "75.0%", target: "≥ 80%", status: "warn" },
-  { en: "Precision", th: "ความแม่นยำ", value: "29.1%", target: "≥ 30%", status: "warn" },
-];
+const TH_MAP: Record<string, string> = {
+  "Ask for explanation": "ขอคำอธิบาย",
+  "Ask about drift status": "สอบถามสถานะการ Drift",
+  "Available queries": "คำถามที่ใช้ได้",
+  "Decision Trace": "ตรรกะการตัดสินใจ",
+  "Not sure yet": "ยังไม่แน่ใจ",
+  "Recommendation": "คำแนะนำ",
+};
+
+type KpiStatus = "pass" | "warn" | "fail";
 
 type RuleStatus = "TRIGGERED" | "ACTIVE" | "CLEAR";
 
-const rules: {
+type RuleCard = {
   num: number;
   nameEn: string;
   nameTh: string;
@@ -62,53 +62,9 @@ const rules: {
   status: RuleStatus;
   tone: "green" | "amber" | "red" | "blue" | "violet";
   tag: string;
-}[] = [
-  {
-    num: 1,
-    nameEn: "Still Valid (Go)",
-    nameTh: "โมเดลใช้งานได้",
-    conditions: "All KPIs within target & no drift",
-    status: "CLEAR",
-    tone: "green",
-    tag: "GO",
-  },
-  {
-    num: 2,
-    nameEn: "Re-train Model",
-    nameTh: "ฝึกโมเดลใหม่",
-    conditions: "Drift = Yes · Recall 78% < 85%",
-    status: "TRIGGERED",
-    tone: "red",
-    tag: "RETRAIN",
-  },
-  {
-    num: 3,
-    nameEn: "Tune Threshold / Sensitivity",
-    nameTh: "ปรับเกณฑ์การตัดสินใจ",
-    conditions: "FPR > 20% & Flagged > 5% with no drift",
-    status: "ACTIVE",
-    tone: "amber",
-    tag: "TUNE",
-  },
-  {
-    num: 4,
-    nameEn: "Optimize System / Resource",
-    nameTh: "ปรับระบบ / ทรัพยากร",
-    conditions: "All KPIs OK but System = Not OK",
-    status: "CLEAR",
-    tone: "blue",
-    tag: "OPTIMIZE",
-  },
-  {
-    num: 5,
-    nameEn: "Emergency Rollback",
-    nameTh: "ย้อนกลับโมเดลฉุกเฉิน",
-    conditions: "Drift + critical KPI collapse",
-    status: "CLEAR",
-    tone: "violet",
-    tag: "ROLLBACK",
-  },
-];
+  detail: RuleDetailData;
+};
+
 
 const toneToColor: Record<string, string> = {
   green: C.green,
@@ -130,6 +86,10 @@ function rulePill(status: RuleStatus) {
   return { color: C.red, bg: "rgba(239, 68, 68, 0.16)", border: "rgba(239,68,68,0.5)" };
 }
 
+function statusFor(value: number, target: number): KpiStatus {
+  return value >= target ? "pass" : "fail";
+}
+
 type ChatMsg = {
   id: string;
   from: "bot" | "user";
@@ -146,32 +106,123 @@ export function AriaScreen({
   currentScreen?: ScreenId;
   onSwitchScreen?: (s: ScreenId) => void;
 }) {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    {
-      id: "sys-1",
-      from: "bot",
-      kind: "system",
-      body: (
-        <span>
-          <b style={{ color: C.red }}>ตรวจพบ Concept Drift</b> — Rule 2 Triggered. Recall ลดลงเหลือ <b>78%</b> (Target ≥ 85%) <span style={{ color: C.subtext }}>·</span> Drift Detected: <b>Yes</b>
-        </span>
-      ),
-    },
-    { id: "rec-1", from: "bot", kind: "action" },
-    { id: "ch-1", from: "bot", kind: "choices" },
-    { id: "risk-1", from: "bot", kind: "risk" },
-  ]);
+  const signals = useMemo<AllSignals>(
+    () => ({
+      mcc: 0.55,
+      precision: 0.88,
+      recall: 0.83,
+      f1: 0.78,
+      accuracy: 0.81,
+      graphDensity: 0.35,
+      nodeCentrality: 0.52,
+      motifSimilarity: 0.72,
+      featureImportance: 0.08,
+      edgeWeights: 0.45,
+      learningRate: 0.005,
+      treeDepth: 6,
+      missingPct: 0.02,
+      labelImbalance: 8.5,
+      psi: 0.07,
+      throughput: 145,
+      latencyMs: 220,
+      cpuRamUsage: 0.65,
+    }),
+    [],
+  );
+
+  const { decision, trace } = useMemo(() => evaluate(signals), [signals]);
+
+  const kpis = useMemo(
+    () => [
+      {
+        en: "Recall",
+        th: "อัตราการตรวจจับ",
+        value: fmtPct(signals.recall),
+        target: ">= 85%",
+        status: statusFor(signals.recall, 0.85),
+      },
+      {
+        en: "Precision",
+        th: "ความแม่นยำ",
+        value: fmtPct(signals.precision),
+        target: ">= 86%",
+        status: statusFor(signals.precision, 0.86),
+      },
+      {
+        en: "F1-Score",
+        th: "สมดุล F1",
+        value: fmtPct(signals.f1),
+        target: ">= 82%",
+        status: statusFor(signals.f1, 0.82),
+      },
+      {
+        en: "Accuracy",
+        th: "ความถูกต้อง",
+        value: fmtPct(signals.accuracy),
+        target: ">= 80%",
+        status: statusFor(signals.accuracy, 0.8),
+      },
+      {
+        en: "MCC",
+        th: "Matthews Corr.",
+        value: fmtRatio(signals.mcc),
+        target: ">= 0.60",
+        status: statusFor(signals.mcc, 0.6),
+      },
+    ],
+    [signals],
+  );
+
+  const rules = useMemo(() => buildRuleCards(signals, trace, decision), [signals, trace, decision]);
+
+  const conceptColor = trace.conceptDrift.result === "Drifted" ? C.red : C.green;
+  const dataColor = trace.dataDrift.result === "Drifted" ? C.red : C.green;
+  const systemColor = trace.systemEfficiency.result === "OK" ? C.green : C.red;
+
+  const [messages, setMessages] = useState<ChatMsg[]>(() => buildInitialMessages(decision, trace, signals));
   const [input, setInput] = useState("");
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [ruleModal, setRuleModal] = useState<null | "retrain" | "schedule" | "threshold" | "rollback">(null);
   const [rollbackInput, setRollbackInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [chatContext, setChatContext] = useState<ChatContext>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const suggestionChips = useMemo(() => {
+    if (decision.action === "Retrain_Model")
+      return [
+        { en: "Why retrain?", th: "ทำไมต้องฝึกโมเดลใหม่?" },
+        { en: "Check Concept Drift", th: "ตรวจสอบ Concept Drift" },
+        { en: "Show metrics", th: "แสดงตัวชี้วัด" },
+      ];
+    if (decision.action === "Tune_Model")
+      return [
+        { en: "Why tune threshold?", th: "ทำไมต้องปรับ Threshold?" },
+        { en: "Check Data Drift", th: "ตรวจสอบ Data Drift" },
+        { en: "Show feature power", th: "แสดงพลังของฟีเจอร์" },
+      ];
+    if (decision.action === "Optimize_System")
+      return [
+        { en: "System health details", th: "รายละเอียดสถานะระบบ" },
+        { en: "Check Latency", th: "ตรวจสอบ Latency" },
+      ];
+    return [
+      { en: "Check Data Quality", th: "ตรวจสอบคุณภาพข้อมูล" },
+      { en: "Verify metrics", th: "ยืนยันตัวชี้วัด" },
+    ];
+  }, [decision.action]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isTyping]);
 
   const handleChoice = (label: string) => {
+    pushToast({
+      tone: "green",
+      title: "Action Queued / รับคำสั่ง",
+      sub: `ดำเนินการ: ${label}`,
+    });
+
     setMessages((prev) => [
       ...prev,
       { id: `u-${Date.now()}`, from: "user", kind: "text", body: label },
@@ -181,31 +232,45 @@ export function AriaScreen({
         kind: "text",
         body: (
           <span>
-            ✅ คำสั่งรับเรียบร้อย: <b>{label}</b>. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.
+            <L
+              en={`✅ Command received: ${label}. The action is queued and logged.`}
+              th={`✅ คำสั่งรับเรียบร้อย: ${label}. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.`}
+            />
           </span>
         ),
       },
     ]);
   };
 
-  const handleSend = () => {
-    const t = input.trim();
+  const handleSend = (textOverride?: string) => {
+    const t = (textOverride || input).trim();
     if (!t) return;
+
+    setInput("");
     setMessages((prev) => [
       ...prev,
       { id: `u-${Date.now()}`, from: "user", kind: "text", body: t },
-      {
-        id: `b-${Date.now()}`,
-        from: "bot",
-        kind: "text",
-        body: (
-          <span>
-            กำลังประมวลผลคำถาม "{t}" · ระบบเป็น rule-based assistant ขอให้ใช้ปุ่มลัดด้านบนเพื่อผลลัพธ์ที่แม่นยำที่สุด.
-          </span>
-        ),
-      },
     ]);
-    setInput("");
+    
+    setIsTyping(true);
+    
+    // Simulate thinking delay
+    setTimeout(() => {
+      setChatContext(currentContext => {
+        const response = matchIntent(t, signals, trace, decision, currentContext);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `b-${Date.now()}`,
+            from: "bot",
+            kind: "text",
+            body: renderChatResponse(response, handleSend),
+          },
+        ]);
+        setIsTyping(false);
+        return response.nextContext || {};
+      });
+    }, 600);
   };
 
   return (
@@ -310,7 +375,7 @@ export function AriaScreen({
                 <div style={{ fontSize: 11, color: C.subtext, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600 }}>
                   Rule Engine
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>Decision Rules · 5 active</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>Decision Rules · 8 active</div>
               </div>
               <span style={{ fontSize: 11, color: C.faint, fontFamily: "'Noto Sans Thai', sans-serif" }}>
                 เครื่องยนต์กฎการตัดสินใจ
@@ -323,6 +388,7 @@ export function AriaScreen({
                 const pill = rulePill(r.status);
                 const open = expandedRule === r.num;
                 const accent = toneToColor[r.tone];
+                const ruleDetail = r.detail;
                 return (
                 <div
                   key={`rule-${r.num}`}
@@ -410,12 +476,12 @@ export function AriaScreen({
                   </div>
                   {open && (
                     <RuleDetailPanel
-                      ruleNum={r.num}
+                      data={ruleDetail}
                       onRetrain={() => setRuleModal("retrain")}
                       onSchedule={() => setRuleModal("schedule")}
                       onMonitor={() => pushToast({ tone: "amber", title: "Monitoring continued", sub: "กำลัง Monitor ต่อ — จะแจ้งเตือนเมื่อ KPI เปลี่ยน" })}
                       onAdjustThreshold={() => setRuleModal("threshold")}
-                      onSimulate={() => pushToast({ tone: "amber", title: "Simulating Rule 3", sub: "Rule 3 would trigger if FPR reaches 20.1%" })}
+                      onSimulate={() => pushToast({ tone: "amber", title: "Simulating tuning", sub: "Previewing KPI impact before applying changes." })}
                       onForceRollback={() => setRuleModal("rollback")}
                     />
                   )}
@@ -500,6 +566,23 @@ export function AriaScreen({
                   );
                 }
                 if (m.kind === "action") {
+                  const actionColor =
+                    decision.action === "Retrain_Model"
+                      ? C.red
+                      : decision.action === "Tune_Model"
+                        ? C.amber
+                        : decision.action === "Optimize_System"
+                          ? C.blue
+                          : C.green;
+                  const actionGlow =
+                    decision.action === "Retrain_Model"
+                      ? C.redGlow
+                      : decision.action === "Tune_Model"
+                        ? "rgba(245, 158, 11, 0.45)"
+                        : decision.action === "Optimize_System"
+                          ? C.blueGlow
+                          : "rgba(16, 185, 129, 0.35)";
+                  const confidencePct = decision.confidence === "High" ? 87 : decision.confidence === "Medium" ? 65 : 45;
                   return (
                     <div
                       key={m.id}
@@ -544,15 +627,15 @@ export function AriaScreen({
                               gap: 8,
                               padding: "8px 14px",
                               borderRadius: 8,
-                              background: `linear-gradient(135deg, ${C.red}, #C0392B)`,
+                              background: `linear-gradient(135deg, ${actionColor}, ${actionColor}CC)`,
                               color: "white",
                               fontSize: 16,
                               fontWeight: 700,
                               letterSpacing: 0.4,
-                              boxShadow: `0 0 24px ${C.redGlow}`,
+                              boxShadow: `0 0 24px ${actionGlow}`,
                             }}
                           >
-                            <Zap size={16} /> RE-TRAIN MODEL
+                            <Zap size={16} /> {decision.tag}
                           </div>
                         </div>
                         <div
@@ -570,22 +653,44 @@ export function AriaScreen({
                           }}
                         >
                           Confidence
-                          <div style={{ fontSize: 18, color: "#E2EDFD", marginTop: 2, letterSpacing: -0.4 }}>87%</div>
+                          <div style={{ fontSize: 18, color: "#E2EDFD", marginTop: 2, letterSpacing: -0.4 }}>{confidencePct}%</div>
                         </div>
                       </div>
                       <div style={{ marginTop: 10, fontSize: 12, color: C.subtext, lineHeight: 1.6 }}>
-                        Drift detected และ Recall ต่ำกว่า threshold ระบบแนะนำให้ฝึกโมเดลใหม่ด้วยข้อมูล 30 วันล่าสุด เพื่อกู้คืนความสามารถในการตรวจจับ.
+                        {decision.plain}
                       </div>
                     </div>
                   );
                 }
                 if (m.kind === "choices") {
-                  const choices = [
-                    { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red },
-                    { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber },
-                    { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue },
-                    { k: "D", label: "Monitor ต่อ / ยกเลิก", en: "Continue monitoring", tone: C.faint },
-                  ];
+                  const choices =
+                    decision.action === "Retrain_Model"
+                      ? [
+                          { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red },
+                          { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber },
+                          { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue },
+                          { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                        ]
+                      : decision.action === "Tune_Model"
+                        ? [
+                            { k: "A", label: "Tune Threshold ตอนนี้", en: "Tune threshold", tone: C.amber },
+                            { k: "B", label: "Simulate KPI Impact", en: "Run simulation", tone: C.blue },
+                            { k: "C", label: "ดู Data Drift Detail", en: "Review drift detail", tone: C.blue },
+                            { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                          ]
+                        : decision.action === "Optimize_System"
+                          ? [
+                              { k: "A", label: "Optimize ตอนนี้", en: "Optimize system", tone: C.blue },
+                              { k: "B", label: "Scale ช่วง Off-peak", en: "Off-peak scale", tone: C.amber },
+                              { k: "C", label: "ดู System Detail", en: "Review system detail", tone: C.blue },
+                              { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                            ]
+                          : [
+                              { k: "A", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.green },
+                              { k: "B", label: "ดู Rule Trace", en: "Review rule trace", tone: C.blue },
+                              { k: "C", label: "ดู KPI Detail", en: "Review KPI detail", tone: C.blue },
+                              { k: "D", label: "No Action", en: "No action", tone: C.faint },
+                            ];
                   return (
                     <div
                       key={m.id}
@@ -652,6 +757,14 @@ export function AriaScreen({
                   );
                 }
                 if (m.kind === "risk") {
+                  const riskCopy =
+                    decision.action === "Retrain_Model"
+                      ? "หากไม่ Re-train ภายใน 24 ชม. ความเสี่ยงจาก Concept Drift จะเพิ่มขึ้นและกระทบการตรวจจับธุรกรรมต้องสงสัย."
+                      : decision.action === "Tune_Model"
+                        ? "หากไม่ Tune โมเดล อาจเกิดความไม่สมดุลระหว่าง Precision และ Recall ต่อเนื่อง."
+                        : decision.action === "Optimize_System"
+                          ? "หากไม่ Optimize ระบบ อาจเกิด Latency สูงและส่งผลต่อ SLA ของการตรวจจับ."
+                          : "ระบบอยู่ในเกณฑ์ปกติ โปรดติดตาม KPI อย่างสม่ำเสมอ.";
                   return (
                     <div
                       key={m.id}
@@ -667,7 +780,7 @@ export function AriaScreen({
                     >
                       <AlertTriangle size={16} color={C.amber} style={{ flexShrink: 0, marginTop: 2 }} />
                       <div style={{ fontSize: 12, color: C.text, lineHeight: 1.55, fontFamily: "'Noto Sans Thai', sans-serif" }}>
-                        <b style={{ color: C.amber }}>⚠️ Risk:</b> หากไม่ Re-train ภายใน <b>24 ชม.</b> Recall อาจลดลงต่อเนื่องและกระทบต่อความสามารถในการตรวจจับธุรกรรมต้องสงสัย.
+                        <b style={{ color: C.amber }}>⚠️ Risk:</b> {riskCopy}
                       </div>
                     </div>
                   );
@@ -732,6 +845,62 @@ export function AriaScreen({
                 );
               })}
             </div>
+            
+            {/* Typing Indicator */}
+            {isTyping && (
+              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 999,
+                    background: `${C.blue}22`,
+                    border: `1px solid ${C.blue}55`,
+                    color: "#7BB0F4",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Bot size={13} />
+                </div>
+                <div
+                  style={{
+                    maxWidth: "78%",
+                    background: C.cardHi,
+                    border: `1px solid ${C.border}`,
+                    color: C.subtext,
+                    borderRadius: 12,
+                    borderBottomLeftRadius: 4,
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span className="dot-typing"></span>
+                  <span className="dot-typing" style={{ animationDelay: "0.2s" }}></span>
+                  <span className="dot-typing" style={{ animationDelay: "0.4s" }}></span>
+                </div>
+              </div>
+            )}
+            
+            <style>{`
+              .dot-typing {
+                width: 5px;
+                height: 5px;
+                background-color: ${C.faint};
+                border-radius: 50%;
+                animation: typing 1s infinite;
+              }
+              @keyframes typing {
+                0%, 100% { opacity: 0.3; transform: translateY(0); }
+                50% { opacity: 1; transform: translateY(-2px); }
+              }
+            `}</style>
+            <SuggestionChips chips={suggestionChips} onSend={handleSend} />
 
             {/* Input bar */}
             <div
@@ -830,24 +999,24 @@ export function AriaScreen({
           <StatusItem
             icon={<Activity size={14} color={C.amber} />}
             label="Drift Status"
-            primary={<><DriftDot color={C.red} /> Data Drift</>}
-            secondary={<><DriftDot color={C.red} /> Concept Drift</>}
-            sub="ตรวจพบ Drift / Detected"
+            primary={<><DriftDot color={conceptColor} /> Concept Drift {trace.conceptDrift.result}</>}
+            secondary={<><DriftDot color={dataColor} /> Data Drift {trace.dataDrift.result}</>}
+            sub={trace.conceptDrift.result === "Drifted" || trace.dataDrift.result === "Drifted" ? "ตรวจพบ Drift / Detected" : "ไม่พบ Drift / Stable"}
           />
           <StatusItem
-            icon={<Cpu size={14} color={C.green} />}
+            icon={<Cpu size={14} color={systemColor} />}
             label="System Health"
-            primary={<span style={{ color: C.green }}>Latency OK</span>}
-            secondary={<span style={{ color: C.green }}>CPU OK</span>}
-            sub="ระบบปกติ / Healthy"
+            primary={<span style={{ color: systemColor }}>Latency {fmtRatio(signals.latencyMs, 0)}ms</span>}
+            secondary={<span style={{ color: systemColor }}>CPU/RAM {Math.round(signals.cpuRamUsage * 100)}%</span>}
+            sub={trace.systemEfficiency.result === "OK" ? "ระบบปกติ / Healthy" : "ระบบวิกฤต / Critical"}
           />
           <StatusItem
             icon={<TrendingUp size={14} color="#7BB0F4" />}
             label="Champion vs Challenger"
             primary={
               <span>
-                <span style={{ color: C.green, fontWeight: 700 }}>+3.2%</span>{" "}
-                <span style={{ color: C.subtext }}>Recall</span>
+                <span style={{ color: C.green, fontWeight: 700 }}>+0.04</span>{" "}
+                <span style={{ color: C.subtext }}>MCC</span>
               </span>
             }
             secondary={<span>XGBoost <span style={{ color: C.faint }}>vs</span> Random Forest</span>}
@@ -856,9 +1025,9 @@ export function AriaScreen({
           <StatusItem
             icon={<Database size={14} color="#A8C8F1" />}
             label="Last Action Log"
-            primary={<span style={{ color: C.text, fontWeight: 600 }}>Re-train completed</span>}
-            secondary={<span style={{ color: C.subtext }}>2025-04-28 02:14</span>}
-            sub="ฝึกโมเดลล่าสุดเสร็จเรียบร้อย"
+            primary={<span style={{ color: C.text, fontWeight: 600 }}>{decision.tag}</span>}
+            secondary={<span style={{ color: C.subtext }}>Today 09:42</span>}
+            sub={decision.action === "Retrain_Model" ? "แนะนำให้ฝึกโมเดลใหม่" : decision.action === "Tune_Model" ? "แนะนำให้ปรับแต่งโมเดล" : decision.action === "Optimize_System" ? "แนะนำให้ปรับปรุงระบบ" : "โมเดลอยู่ในเกณฑ์"}
           />
         </div>
       </div>
@@ -882,7 +1051,7 @@ export function AriaScreen({
               variant="primary"
               onClick={() => {
                 setRuleModal(null);
-                pushToast({ tone: "red", title: "Re-train started", sub: "เริ่มฝึกโมเดล Rule 2 · IN PROGRESS" });
+                pushToast({ tone: "red", title: "Re-train started", sub: "เริ่มฝึกโมเดล Rule 8-2 · IN PROGRESS" });
                 setTimeout(() => pushToast({ tone: "amber", title: "Training in progress", sub: "62% · ETA 7 min" }), 1100);
                 setTimeout(() => pushToast({ tone: "green", title: "Re-train complete", sub: "Recall ↑ 86.4% · Drift cleared" }), 2400);
               }}
@@ -936,7 +1105,7 @@ export function AriaScreen({
               variant="primary"
               onClick={() => {
                 setRuleModal(null);
-                pushToast({ tone: "amber", title: "Threshold updated", sub: "τ = 0.45 · Recall ↑ 82% · FPR ↑ 18%" });
+                pushToast({ tone: "amber", title: "Threshold updated", sub: "τ = 0.45 · Recall ↑ 82% · Precision ↑ 86%" });
               }}
             >
               Apply
@@ -945,7 +1114,7 @@ export function AriaScreen({
         }
       >
         <div style={{ fontSize: 13, color: C.subtext, lineHeight: 1.6 }}>
-          Lower τ → higher Recall, higher FPR. Adjust slider in detail panel preview.
+          Lower τ → higher Recall, lower Precision. Adjust slider in detail panel preview.
         </div>
       </ModalShell>
 
@@ -1043,7 +1212,7 @@ type Cond = { cond: string; target: string; current: string; pass: boolean };
 
 type RuleDetailData = {
   status: "TRIGGERED" | "ACTIVE" | "CLEAR";
-  accent: string;
+  accent?: string;
   conditions: Cond[];
   note?: { tone: "amber" | "green"; en: string; th: string };
   shap?: { feature: string; weight: number; tone: "red" | "amber" }[];
@@ -1054,120 +1223,454 @@ type RuleDetailData = {
   actions: ("retrain" | "schedule" | "monitor" | "threshold" | "simulate" | "rollback")[];
 };
 
-const RULE_DATA: Record<number, RuleDetailData> = {
-  1: {
-    status: "CLEAR",
-    accent: C.green,
+function buildRuleCards(signals: AllSignals, trace: RuleTrace, decision: Decision): RuleCard[] {
+  const nowLabel = "Now / ขณะนี้";
+  const clearLabel = "—";
+
+  const rule1Status: RuleStatus = trace.metricStability.result === "Pass" ? "CLEAR" : "TRIGGERED";
+  const rule1Detail: RuleDetailData = {
+    status: rule1Status,
     conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "≤ 20%", current: "16.4%", pass: true },
-      { cond: "Flagged Rate", target: "≤ 5%", current: "8.7%", pass: false },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "≥ 30%", current: "29.1%", pass: false },
-      { cond: "System Status", target: "OK", current: "OK", pass: true },
-      { cond: "Drift Detected", target: "No", current: "Yes", pass: false },
+      { cond: "MCC", target: ">= 0.60", current: fmtRatio(signals.mcc), pass: signals.mcc >= 0.6 },
+      { cond: "Precision", target: ">= 0.86", current: fmtRatio(signals.precision), pass: signals.precision >= 0.86 },
+      { cond: "Recall", target: ">= 0.85", current: fmtRatio(signals.recall), pass: signals.recall >= 0.85 },
+      { cond: "F1", target: ">= 0.82", current: fmtRatio(signals.f1), pass: signals.f1 >= 0.82 },
+      { cond: "Accuracy", target: ">= 0.80", current: fmtRatio(signals.accuracy), pass: signals.accuracy >= 0.8 },
     ],
-    note: { tone: "amber", en: "Rule 1 requires ALL conditions met. Current data does not satisfy Rule 1.", th: "Rule 1 ต้องผ่านทุกเงื่อนไข — ปัจจุบันยังไม่ครบ" },
-    lastTriggered: "Never triggered / ไม่เคย trigger",
+    note: rule1Status === "TRIGGERED"
+      ? { tone: "amber", en: `Metric stability failed: ${trace.metricStability.details}`, th: "Metric stability ไม่ผ่านเกณฑ์" }
+      : { tone: "green", en: "All metric thresholds met.", th: "ผ่านทุกเงื่อนไข" },
+    logic: [
+      "IF MCC >= 0.60",
+      "AND Precision >= 0.86",
+      "AND Recall >= 0.85",
+      "AND F1 >= 0.82",
+      "AND Accuracy >= 0.80",
+      "THEN Metric_Stability = Pass",
+    ],
+    lastTriggered: rule1Status === "TRIGGERED" ? nowLabel : clearLabel,
     actions: [],
-  },
-  2: {
-    status: "TRIGGERED",
-    accent: C.red,
+  };
+
+  const rule2Status: RuleStatus = trace.patternLogic.result === "Normal" ? "CLEAR" : "ACTIVE";
+  const rule2Detail: RuleDetailData = {
+    status: rule2Status,
     conditions: [
-      { cond: "Recall", target: "< 85%", current: "78.0%", pass: true },
-      { cond: "Drift Detected", target: "Yes", current: "Yes", pass: true },
-      { cond: "Pattern Coverage", target: "< 80%", current: "75.0%", pass: true },
-      { cond: "Precision", target: "< 30%", current: "29.1%", pass: true },
-    ],
-    shap: [
-      { feature: "transaction_velocity", weight: 0.34, tone: "red" },
-      { feature: "amount_zscore", weight: 0.21, tone: "red" },
-      { feature: "time_since_last_txn", weight: 0.18, tone: "amber" },
+      { cond: "Graph Density", target: "0.10-0.60", current: fmtRatio(signals.graphDensity), pass: signals.graphDensity >= 0.1 && signals.graphDensity <= 0.6 },
+      { cond: "Node Centrality", target: "> 0.40", current: fmtRatio(signals.nodeCentrality), pass: signals.nodeCentrality > 0.4 },
+      { cond: "Motif Similarity", target: "> 0.60", current: fmtRatio(signals.motifSimilarity), pass: signals.motifSimilarity > 0.6 },
     ],
     logic: [
-      "IF Drift == 'Yes'",
-      "AND (Recall < 0.85",
-      "     OR Pattern_Coverage < 0.80",
-      "     OR Precision < 0.30)",
-      "THEN 'RE-TRAIN MODEL'",
+      "IF 0.10 <= Graph_Density <= 0.60",
+      "AND Node_Centrality > 0.40",
+      "AND Motif_Similarity > 0.60",
+      "THEN Pattern_Logic = Normal",
     ],
-    lastTriggered: "Today 09:42 / วันนี้ 09:42",
-    actions: ["retrain", "schedule", "monitor"],
-  },
-  3: {
-    status: "ACTIVE",
-    accent: C.amber,
-    conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "> 20%", current: "16.4%", pass: false },
-      { cond: "Flagged Rate", target: "> 5%", current: "8.7%", pass: true },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "< 30%", current: "29.1%", pass: true },
-      { cond: "Drift", target: "No", current: "Yes", pass: false },
-    ],
-    note: { tone: "amber", en: "Some conditions pass — rule not fully triggered.", th: "บางเงื่อนไขผ่าน — Rule ยังไม่ fully triggered" },
-    logic: [
-      "IF Recall >= 0.85 AND Pattern_Coverage >= 0.80",
-      "AND FPR > 0.20 AND Flagged_Rate > 0.05",
-      "AND Precision < 0.30 AND Drift == 'No'",
-      "THEN 'TUNE THRESHOLD / SENSITIVITY'",
-    ],
-    lastTriggered: "3 days ago / 3 วันที่แล้ว",
-    actions: ["threshold", "simulate"],
-  },
-  4: {
-    status: "CLEAR",
-    accent: C.green,
-    conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "≤ 20%", current: "16.4%", pass: true },
-      { cond: "Flagged Rate", target: "≤ 5%", current: "8.7%", pass: false },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "≥ 30%", current: "29.1%", pass: false },
-      { cond: "Drift", target: "No", current: "Yes", pass: false },
-      { cond: "System Status", target: "Not OK", current: "OK", pass: false },
-    ],
-    note: { tone: "green", en: "System healthy — Rule 4 not triggered.", th: "ระบบทำงานปกติ — Rule 4 ไม่ถูก trigger" },
-    logic: [
-      "IF Recall >= 0.85 AND FPR <= 0.20",
-      "AND Flagged_Rate <= 0.05 AND Pattern_Coverage >= 0.80",
-      "AND Precision >= 0.30 AND Drift == 'No'",
-      "AND System == 'Not OK'",
-      "THEN 'OPTIMIZE SYSTEM / RESOURCE'",
-    ],
-    systemHealth: { latency: "OK", cpu: "67%", memory: "Normal" },
-    lastTriggered: "Never / ไม่เคย",
+    lastTriggered: rule2Status === "CLEAR" ? clearLabel : nowLabel,
     actions: [],
-  },
-  5: {
-    status: "CLEAR",
-    accent: C.green,
+  };
+
+  const rule3Status: RuleStatus = trace.featurePower.result === "Good" ? "CLEAR" : "ACTIVE";
+  const rule3Detail: RuleDetailData = {
+    status: rule3Status,
     conditions: [
-      { cond: "Recall", target: "< 50%", current: "78.0%", pass: false },
-      { cond: "Pattern Coverage", target: "< 50%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "< 10%", current: "29.1%", pass: false },
-      { cond: "Drift", target: "Yes", current: "Yes", pass: true },
+      { cond: "Feature Importance", target: "> 0.05", current: fmtRatio(signals.featureImportance), pass: signals.featureImportance > 0.05 },
+      { cond: "Edge Weights", target: "> 0.30", current: fmtRatio(signals.edgeWeights), pass: signals.edgeWeights > 0.3 },
+      { cond: "Learning Rate", target: "0.001-0.01", current: fmtRatio(signals.learningRate, 4), pass: signals.learningRate >= 0.001 && signals.learningRate <= 0.01 },
+      { cond: "Tree Depth", target: "3-8", current: fmtRatio(signals.treeDepth, 0), pass: signals.treeDepth >= 3 && signals.treeDepth <= 8 },
     ],
-    note: { tone: "green", en: "Recall and Precision still above emergency floor — rollback not required.", th: "Recall และ Precision ยังอยู่เหนือเกณฑ์ฉุกเฉิน — ไม่จำเป็นต้อง Rollback" },
     logic: [
-      "IF Drift == 'Yes'",
-      "AND (Recall < 0.50",
-      "     OR Pattern_Coverage < 0.50",
-      "     OR Precision < 0.10)",
-      "THEN 'EMERGENCY ROLLBACK'",
+      "IF Feature_Importance > 0.05",
+      "AND Edge_Weights > 0.30",
+      "AND Learning_Rate in [0.001, 0.01]",
+      "AND Tree_Depth in [3, 8]",
+      "THEN Feature_Power = Good",
     ],
-    warning: {
-      en: "If Recall continues to drop to 50%, this rule will auto-trigger. Gap to trigger: -28% Recall.",
-      th: "หาก Recall ลดลงต่อเนื่องถึง 50% Rule นี้จะถูก trigger อัตโนมัติ · ระยะห่างจาก trigger: Recall ต้องลดอีก 28%",
+    lastTriggered: rule3Status === "CLEAR" ? clearLabel : nowLabel,
+    actions: [],
+  };
+
+  const rule4Status: RuleStatus = trace.dataQuality.result === "Good" ? "CLEAR" : "ACTIVE";
+  const rule4Detail: RuleDetailData = {
+    status: rule4Status,
+    conditions: [
+      { cond: "Missing Value %", target: "< 0.05", current: fmtRatio(signals.missingPct), pass: signals.missingPct < 0.05 },
+      { cond: "Label Imbalance", target: "< 10", current: fmtRatio(signals.labelImbalance), pass: signals.labelImbalance < 10 },
+      { cond: "PSI", target: "< 0.10", current: fmtRatio(signals.psi), pass: signals.psi < 0.1 },
+    ],
+    logic: [
+      "IF Missing_Value_Pct < 0.05",
+      "AND Label_Imbalance < 10",
+      "AND PSI < 0.10",
+      "THEN Data_Quality = Good",
+    ],
+    lastTriggered: rule4Status === "CLEAR" ? clearLabel : nowLabel,
+    actions: [],
+  };
+
+  const rule5Status: RuleStatus = trace.systemEfficiency.result === "OK" ? "CLEAR" : "TRIGGERED";
+  const rule5Detail: RuleDetailData = {
+    status: rule5Status,
+    conditions: [
+      { cond: "Throughput", target: ">= 100", current: fmtRatio(signals.throughput, 0), pass: signals.throughput >= 100 },
+      { cond: "Latency (ms)", target: "<= 300", current: fmtRatio(signals.latencyMs, 0), pass: signals.latencyMs <= 300 },
+      { cond: "CPU/RAM", target: "<= 0.80", current: fmtRatio(signals.cpuRamUsage), pass: signals.cpuRamUsage <= 0.8 },
+    ],
+    systemHealth: {
+      latency: `${fmtRatio(signals.latencyMs, 0)} ms`,
+      cpu: `${Math.round(signals.cpuRamUsage * 100)}%`,
+      memory: signals.cpuRamUsage <= 0.8 ? "OK" : "High",
     },
-    lastTriggered: "Never / ไม่เคย",
-    actions: ["rollback"],
-  },
-};
+    logic: [
+      "IF Throughput >= 100",
+      "AND Latency_ms <= 300",
+      "AND CPU_RAM_Usage <= 0.80",
+      "THEN System_Efficiency = OK",
+    ],
+    lastTriggered: rule5Status === "TRIGGERED" ? nowLabel : clearLabel,
+    actions: [],
+  };
+
+  const rule6Status: RuleStatus = trace.conceptDrift.result === "Stable" ? "CLEAR" : "TRIGGERED";
+  const rule6Detail: RuleDetailData = {
+    status: rule6Status,
+    conditions: [
+      { cond: "Metric Stability", target: "Pass", current: trace.metricStability.result, pass: trace.metricStability.result === "Pass" },
+      { cond: "Pattern Logic", target: "Normal", current: trace.patternLogic.result, pass: trace.patternLogic.result === "Normal" },
+    ],
+    logic: [
+      "IF Metric_Stability = Pass",
+      "AND Pattern_Logic = Normal",
+      "THEN Concept_Drift = Stable",
+    ],
+    lastTriggered: rule6Status === "TRIGGERED" ? nowLabel : clearLabel,
+    actions: [],
+  };
+
+  const rule7Status: RuleStatus = trace.dataDrift.result === "Stable" ? "CLEAR" : "ACTIVE";
+  const rule7Detail: RuleDetailData = {
+    status: rule7Status,
+    conditions: [
+      { cond: "Feature Power", target: "Good", current: trace.featurePower.result, pass: trace.featurePower.result === "Good" },
+      { cond: "Data Quality", target: "Good", current: trace.dataQuality.result, pass: trace.dataQuality.result === "Good" },
+    ],
+    logic: [
+      "IF Feature_Power = Good",
+      "AND Data_Quality = Good",
+      "THEN Data_Drift = Stable",
+    ],
+    lastTriggered: rule7Status === "ACTIVE" ? nowLabel : clearLabel,
+    actions: [],
+  };
+
+  const rule8Status: RuleStatus = decision.action === "Still_Valid_GO" ? "CLEAR" : "TRIGGERED";
+  const rule8Actions: RuleDetailData["actions"] =
+    decision.action === "Retrain_Model"
+      ? ["retrain", "schedule", "monitor"]
+      : decision.action === "Tune_Model"
+        ? ["threshold", "simulate", "monitor"]
+        : decision.action === "Optimize_System"
+          ? ["monitor"]
+          : ["monitor"];
+  const rule8Detail: RuleDetailData = {
+    status: rule8Status,
+    conditions: [
+      { cond: "Concept Drift", target: "Stable", current: trace.conceptDrift.result, pass: trace.conceptDrift.result === "Stable" },
+      { cond: "Data Drift", target: "Stable", current: trace.dataDrift.result, pass: trace.dataDrift.result === "Stable" },
+      { cond: "System Efficiency", target: "OK", current: trace.systemEfficiency.result, pass: trace.systemEfficiency.result === "OK" },
+    ],
+    note: {
+      tone: decision.action === "Still_Valid_GO" ? "green" : "amber",
+      en: `Final action selected: ${decision.tag} (${decision.ruleId}).`,
+      th: "ผลลัพธ์สุดท้ายจาก Rule 8",
+    },
+    logic: [
+      "IF Concept_Drift = Drifted THEN Retrain_Model",
+      "ELSE IF Data_Drift = Drifted THEN Tune_Model",
+      "ELSE IF System_Efficiency = Critical THEN Optimize_System",
+      "ELSE Still_Valid_GO",
+    ],
+    lastTriggered: rule8Status === "TRIGGERED" ? nowLabel : clearLabel,
+    actions: rule8Actions,
+  };
+
+  const decisionTone: RuleCard["tone"] =
+    decision.action === "Retrain_Model"
+      ? "red"
+      : decision.action === "Tune_Model"
+        ? "amber"
+        : decision.action === "Optimize_System"
+          ? "blue"
+          : "green";
+  const decisionTag =
+    decision.action === "Retrain_Model"
+      ? "RETRAIN"
+      : decision.action === "Tune_Model"
+        ? "TUNE"
+        : decision.action === "Optimize_System"
+          ? "OPTIMIZE"
+          : "GO";
+
+  return [
+    {
+      num: 1,
+      nameEn: "Metric Stability",
+      nameTh: "เสถียรภาพตัวชี้วัด",
+      conditions: "MCC, Precision, Recall, F1, Accuracy",
+      status: rule1Status,
+      tone: rule1Status === "CLEAR" ? "green" : "red",
+      tag: trace.metricStability.result.toUpperCase(),
+      detail: rule1Detail,
+    },
+    {
+      num: 2,
+      nameEn: "Pattern Logic",
+      nameTh: "ตรรกะรูปแบบ",
+      conditions: "Graph Density, Node Centrality, Motif Similarity",
+      status: rule2Status,
+      tone: rule2Status === "CLEAR" ? "green" : "amber",
+      tag: trace.patternLogic.result.toUpperCase(),
+      detail: rule2Detail,
+    },
+    {
+      num: 3,
+      nameEn: "Feature Power",
+      nameTh: "พลังของฟีเจอร์",
+      conditions: "Feature Importance, Edge Weights, LR, Tree Depth",
+      status: rule3Status,
+      tone: rule3Status === "CLEAR" ? "green" : "amber",
+      tag: trace.featurePower.result.toUpperCase(),
+      detail: rule3Detail,
+    },
+    {
+      num: 4,
+      nameEn: "Data Quality",
+      nameTh: "คุณภาพข้อมูล",
+      conditions: "Missing %, Label Imbalance, PSI",
+      status: rule4Status,
+      tone: rule4Status === "CLEAR" ? "green" : "amber",
+      tag: trace.dataQuality.result.toUpperCase(),
+      detail: rule4Detail,
+    },
+    {
+      num: 5,
+      nameEn: "System Efficiency",
+      nameTh: "ประสิทธิภาพระบบ",
+      conditions: "Throughput, Latency, CPU/RAM",
+      status: rule5Status,
+      tone: rule5Status === "CLEAR" ? "green" : "red",
+      tag: trace.systemEfficiency.result.toUpperCase(),
+      detail: rule5Detail,
+    },
+    {
+      num: 6,
+      nameEn: "Concept Drift",
+      nameTh: "Concept Drift",
+      conditions: "Metric Stability + Pattern Logic",
+      status: rule6Status,
+      tone: rule6Status === "CLEAR" ? "green" : "red",
+      tag: trace.conceptDrift.result.toUpperCase(),
+      detail: rule6Detail,
+    },
+    {
+      num: 7,
+      nameEn: "Data Drift",
+      nameTh: "Data Drift",
+      conditions: "Feature Power + Data Quality",
+      status: rule7Status,
+      tone: rule7Status === "CLEAR" ? "green" : "amber",
+      tag: trace.dataDrift.result.toUpperCase(),
+      detail: rule7Detail,
+    },
+    {
+      num: 8,
+      nameEn: "Final Action",
+      nameTh: "ผลลัพธ์สุดท้าย",
+      conditions: "Concept Drift + Data Drift + System Efficiency",
+      status: rule8Status,
+      tone: decisionTone,
+      tag: decisionTag,
+      detail: rule8Detail,
+    },
+  ];
+}
+
+function buildInitialMessages(decision: Decision, trace: RuleTrace, signals: AllSignals): ChatMsg[] {
+  const conceptColor = trace.conceptDrift.result === "Drifted" ? C.red : C.green;
+  const dataColor = trace.dataDrift.result === "Drifted" ? C.red : C.green;
+  const decisionColor =
+    decision.tone === "red"
+      ? C.red
+      : decision.tone === "orange" || decision.tone === "yellow"
+        ? C.amber
+        : C.green;
+  const systemMessage = (
+    <span>
+      <b style={{ color: conceptColor }}>
+        {trace.conceptDrift.result === "Drifted" ? "ตรวจพบ Concept Drift" : "Concept Drift Stable"}
+      </b>
+      {" "}· Metric Stability {trace.metricStability.result} (MCC {fmtRatio(signals.mcc)})
+      <span style={{ color: C.subtext }}> · </span>
+      <span style={{ color: dataColor }}>Data Drift {trace.dataDrift.result}</span>
+    </span>
+  );
+  
+  const greetingMessage = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="lang-en">
+        <div style={{ fontWeight: 700 }}>ARIA - Decision Support System | AML Risk Intelligence</div>
+        <div style={{ marginTop: 6 }}>
+          Hello. I'm ARIA, your analytical advisor for KPI monitoring and risk decision support. I can help you with:
+        </div>
+        <ol style={{ margin: "8px 0 0 18px", color: C.subtext }}>
+          <li>KPI status check - current values, thresholds, and trend context</li>
+          <li>Root cause analysis - why a KPI is behaving the way it is</li>
+          <li>Remediation options - structured plan with trade-offs for each choice</li>
+          <li>Scenario analysis - projected impact of proposed changes</li>
+          <li>Weekly digest - full performance summary with priority focus areas</li>
+        </ol>
+        <div style={{ marginTop: 6 }}>
+          Current recommendation: <b style={{ color: decisionColor }}>{decision.tag}</b>.
+        </div>
+        <div style={{ marginTop: 6 }}>What would you like to analyze?</div>
+      </div>
+      <div className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>
+        <div style={{ fontWeight: 700 }}>ARIA - ระบบสนับสนุนการตัดสินใจ | ข่าวกรองความเสี่ยง AML</div>
+        <div style={{ marginTop: 6 }}>
+          สวัสดี ฉันคือ ARIA ที่ปรึกษาวิเคราะห์สำหรับการติดตาม KPI และการสนับสนุนการตัดสินใจด้านความเสี่ยง ฉันช่วยคุณได้ในเรื่อง:
+        </div>
+        <ol style={{ margin: "8px 0 0 18px", color: C.subtext }}>
+          <li>ตรวจสอบสถานะ KPI - ค่าปัจจุบัน เกณฑ์ และบริบทแนวโน้ม</li>
+          <li>วิเคราะห์สาเหตุหลัก - ทำไม KPI จึงเป็นแบบนี้</li>
+          <li>ตัวเลือกการแก้ไข - แผนทางเลือกพร้อมข้อแลกเปลี่ยน</li>
+          <li>การวิเคราะห์สถานการณ์ - ผลกระทบที่คาดจากการเปลี่ยนแปลง</li>
+          <li>สรุปรายสัปดาห์ - ภาพรวมผลการดำเนินงานและประเด็นสำคัญ</li>
+        </ol>
+        <div style={{ marginTop: 6 }}>
+          คำแนะนำปัจจุบัน: <b style={{ color: decisionColor }}>{decision.tag}</b>.
+        </div>
+        <div style={{ marginTop: 6 }}>ต้องการให้ช่วยวิเคราะห์เรื่องใด?</div>
+      </div>
+    </div>
+  );
+
+  const base: ChatMsg[] = [
+    { id: "intro-0", from: "bot", kind: "text", body: greetingMessage },
+    { id: "sys-1", from: "bot", kind: "system", body: systemMessage },
+    { id: "rec-1", from: "bot", kind: "action" },
+    { id: "ch-1", from: "bot", kind: "choices" },
+  ];
+  if (decision.action !== "Still_Valid_GO") {
+    base.push({ id: "risk-1", from: "bot", kind: "risk" });
+  }
+  return base;
+}
+
+function renderChatResponse(response: ChatResponse, onSend: (msg: string) => void): React.ReactNode {
+  const getEn = (item: any) => typeof item === 'string' ? item : item?.en || '';
+  const getTh = (item: any) => typeof item === 'string' ? (TH_MAP[item] ?? item) : item?.th || item?.en || '';
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontWeight: 700 }}><L en={getEn(response.title)} th={getTh(response.title)} /></div>
+      <div style={{ color: C.text }}><L en={getEn(response.message)} th={getTh(response.message)} /></div>
+      {response.details && response.details.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 16, color: C.subtext }}>
+          {response.details.map((d, i) => (
+            <li key={`d-${i}`}><L en={getEn(d)} th={getTh(d)} /></li>
+          ))}
+        </ul>
+      )}
+      {response.followups && response.followups.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+          {response.followups.map((f, i) => {
+            const sendVal = typeof f === 'string' ? f : f.en;
+            return (
+              <button
+                key={`f-${i}`}
+                type="button"
+                onClick={() => onSend(sendVal)}
+                aria-label={`Follow up: ${getEn(f)}`}
+                style={{
+                  background: "rgba(30,111,217,0.15)",
+                  border: `1px solid rgba(30,111,217,0.4)`,
+                  color: "#7BB0F4",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  fontFamily: FONT,
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.background = "rgba(30,111,217,0.25)")}
+                onMouseOut={(e) => (e.currentTarget.style.background = "rgba(30,111,217,0.15)")}
+              >
+                <L en={getEn(f)} th={getTh(f)} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SuggestionChips({ chips, onSend }: { chips: { en: string; th?: string }[]; onSend: (msg: string) => void }) {
+  const lang = useLang();
+  if (!chips || chips.length === 0) return null;
+  return (
+    <div
+      style={{
+        padding: "8px 14px",
+        borderTop: `1px solid ${C.border}`,
+        display: "flex",
+        gap: 8,
+        overflowX: "auto",
+        scrollbarWidth: "none",
+        background: C.card,
+      }}
+    >
+      {chips.map((chip) => {
+        const labelEn = chip.en;
+        const labelTh = chip.th ?? chip.en;
+        const sendText = lang === "th" ? labelTh : labelEn;
+        return (
+          <button
+            key={labelEn}
+            type="button"
+            onClick={() => onSend(sendText)}
+            aria-label={`Suggest: ${labelEn}`}
+            style={{
+              background: C.base,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              padding: "6px 12px",
+              borderRadius: 999,
+              fontSize: 12,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              fontFamily: FONT,
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.border = `1px solid ${C.blue}88`;
+              e.currentTarget.style.color = "#7BB0F4";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.border = `1px solid ${C.border}`;
+              e.currentTarget.style.color = C.text;
+            }}
+          >
+            <L en={labelEn} th={labelTh} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function RuleDetailPanel({
-  ruleNum,
+  data,
   onRetrain,
   onSchedule,
   onMonitor,
@@ -1175,7 +1678,7 @@ function RuleDetailPanel({
   onSimulate,
   onForceRollback,
 }: {
-  ruleNum: number;
+  data?: RuleDetailData;
   onRetrain: () => void;
   onSchedule: () => void;
   onMonitor: () => void;
@@ -1183,7 +1686,6 @@ function RuleDetailPanel({
   onSimulate: () => void;
   onForceRollback: () => void;
 }) {
-  const data = RULE_DATA[ruleNum];
   if (!data) return null;
   const statusColor = data.status === "TRIGGERED" ? C.red : data.status === "ACTIVE" ? C.amber : C.green;
 
@@ -1322,29 +1824,22 @@ function RuleDetailPanel({
               <div key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\b(IF|AND|OR|THEN)\b/g, `<span style="color:${C.blue};font-weight:700">$1</span>`) }} />
             ))}
           </pre>
-        </div>
-      )}
-
-      {/* System health (Rule 4) */}
-      {data.systemHealth && (
-        <div>
-          <div style={{ fontSize: 11, color: C.subtext, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
-            System Health
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 12 }}>
-            <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Latency</div>
-              <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.latency} ✓</div>
+          {data.systemHealth && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 12, marginTop: 12 }}>
+              <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Latency</div>
+                <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.latency} ✓</div>
+              </div>
+              <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.08)", border: `1px solid ${C.amber}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>CPU</div>
+                <div style={{ color: C.amber, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.cpu}</div>
+              </div>
+              <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Memory</div>
+                <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.memory} ✓</div>
+              </div>
             </div>
-            <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.08)", border: `1px solid ${C.amber}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>CPU</div>
-              <div style={{ color: C.amber, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.cpu}</div>
-            </div>
-            <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Memory</div>
-              <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.memory} ✓</div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 

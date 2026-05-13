@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, X, Send, Sparkles, ChevronDown, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { type Decision, type Signals } from "./decision-engine";
+import { type AllSignals, type Decision } from "./decision-engine";
 
 type Msg = {
   id: string;
@@ -12,7 +12,7 @@ type Msg = {
 
 type Props = {
   decision: Decision;
-  signals: Signals;
+  signals: AllSignals;
   onExplain: () => void;
   onSimulate: () => void;
   onShowKpiBreakdown: () => void;
@@ -28,13 +28,14 @@ const quickActions = [
 
 type ActionId = (typeof quickActions)[number]["id"];
 
-function formatDefault(decision: Decision, signals: Signals): React.ReactNode {
+function formatDefault(decision: Decision, signals: AllSignals): React.ReactNode {
+  const fmt = (n: number) => n.toFixed(2);
   const offenders: string[] = [];
-  if (signals.recall < 85) offenders.push(`Recall: ${signals.recall.toFixed(1)}% (below target)`);
-  if (signals.fpr > 20) offenders.push(`FPR: ${signals.fpr.toFixed(1)}% (above target)`);
-  if (signals.flaggedRate > 5) offenders.push(`Flagged Rate: ${signals.flaggedRate.toFixed(1)}% (above target)`);
-  if (signals.patternCoverage < 80) offenders.push(`Pattern Coverage: ${signals.patternCoverage.toFixed(1)}% (below target)`);
-  if (signals.precision < 30) offenders.push(`Precision: ${signals.precision.toFixed(1)}% (below target)`);
+  if (signals.mcc < 0.6) offenders.push(`MCC: ${fmt(signals.mcc)} (below 0.60)`);
+  if (signals.precision < 0.86) offenders.push(`Precision: ${fmt(signals.precision)} (below 0.86)`);
+  if (signals.recall < 0.85) offenders.push(`Recall: ${fmt(signals.recall)} (below 0.85)`);
+  if (signals.f1 < 0.82) offenders.push(`F1: ${fmt(signals.f1)} (below 0.82)`);
+  if (signals.accuracy < 0.8) offenders.push(`Accuracy: ${fmt(signals.accuracy)} (below 0.80)`);
   return (
     <div className="space-y-2">
       <div>Based on current KPIs:</div>
@@ -44,7 +45,7 @@ function formatDefault(decision: Decision, signals: Signals): React.ReactNode {
         ) : (
           offenders.map((o, i) => <li key={`o-${i}`}>{o}</li>)
         )}
-        <li>Drift detected: <b>{signals.drift.toUpperCase()}</b></li>
+        <li>Rule engine status is based on metric, drift, and system signals.</li>
       </ul>
       <div>
         Recommendation: <b className="text-slate-900">{decision.tag}</b>
@@ -123,19 +124,19 @@ export function AmlChatbot({ decision, signals, onExplain, onSimulate, onShowKpi
       onSimulate();
       pushBot(
         <div>
-          Opening the threshold simulator on the Detection Overview. Try raising τ to 0.65 — that usually trades a small Recall hit for a much lower Flagged Rate.
+          Opening the threshold simulator on the Detection Overview. Try raising τ to 0.65 — that usually trades a small Recall hit for improved Precision.
         </div>,
       );
     } else if (id === "compare") {
       pushBot(
         <div>
-          Model comparison: current build <b>4.7.2</b> vs previous <b>4.6.9</b>. On the same labelled holdout, 4.6.9 had Recall <b>86.1%</b> and FPR <b>15.4%</b>. A rollback restores Recall above target but spends ~1.3 pts of FPR.
+          Model comparison: current build <b>4.7.2</b> vs previous <b>4.6.9</b>. On the same labelled holdout, 4.6.9 had Recall <b>0.86</b> and MCC <b>0.61</b>. A rollback restores MCC above target but slightly reduces Precision.
         </div>,
       );
     } else if (id === "trend") {
       pushBot(
         <div>
-          Last 7 days: Recall trended <b>down 1.4 pts</b>, Precision <b>down 0.8 pts</b>, Flagged Rate <b>up 1.4 pts</b>. Drift detector flipped to <b>Yes</b> on day 3.
+          Last 7 days: Recall trended <b>down 1.4 pts</b>, F1 <b>down 0.9 pts</b>, MCC <b>down 0.04</b>. Drift detector flipped to <b>Drifted</b> on day 3.
         </div>,
       );
     }

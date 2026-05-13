@@ -31,7 +31,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./ui/tooltip";
-import { evaluate, toneClasses, type Confidence, type Signals } from "./decision-engine";
+import { evaluate, toneClasses, type AllSignals, type Confidence, type DecisionAction } from "./decision-engine";
 import { ModalButton, ModalShell, pushToast } from "./aml-interactions";
 
 type Status = "green" | "yellow" | "red";
@@ -59,89 +59,89 @@ type Kpi = {
 const kpis: Kpi[] = [
   {
     id: "recall",
-    name: "Model Detection Rate (Recall)",
+    name: "Recall",
     icon: <Crosshair className="w-4 h-4" />,
     description: "Detection rate of true suspicious transactions",
-    human: "System detects ~82 of every 100 suspicious transactions",
+    human: "System detects ~83 of every 100 suspicious transactions",
     target: "≥ 85%",
     targetValue: 85,
     comparison: "≥",
-    current: 82.3,
+    current: 83.0,
     unit: "%",
     formula: "TP / (TP + FN)",
-    hint: "Risk of missed suspicious activity — consider lowering threshold or retraining",
+    hint: "Below target — retraining or tuning is required to recover detection.",
     trend: "down",
-    trendDelta: "−1.4 pts vs last week",
+    trendDelta: "−1.2 pts vs last week",
     status: "red",
-  },
-  {
-    id: "fpr",
-    name: "False Positive Rate",
-    icon: <Filter className="w-4 h-4" />,
-    description: "Percentage of alerts that are not actual risk",
-    human: "~14 of every 100 normal transactions are incorrectly flagged",
-    target: "≤ 20%",
-    targetValue: 20,
-    comparison: "≤",
-    current: 14.1,
-    unit: "%",
-    formula: "FP / (FP + TN)",
-    note: "ML can reduce false positives significantly compared to rule-based systems.",
-    hint: "Within target — current threshold is well-calibrated for analyst workload",
-    trend: "flat",
-    trendDelta: "±0.2 pts vs last week",
-    status: "green",
-  },
-  {
-    id: "flagged",
-    name: "Flagged Rate",
-    icon: <Activity className="w-4 h-4" />,
-    description: "Percentage of transactions flagged by the model",
-    human: "~13 of every 100 transactions are routed for review",
-    target: "≤ 5%",
-    targetValue: 5,
-    comparison: "≤",
-    current: 13.2,
-    unit: "%",
-    formula: "Flagged / Total transactions",
-    hint: "Operational overload risk — increase threshold to reduce alert volume",
-    trend: "up",
-    trendDelta: "+1.4 pts vs last week",
-    status: "red",
-  },
-  {
-    id: "coverage",
-    name: "Pattern Coverage",
-    icon: <Layers className="w-4 h-4" />,
-    description: "Share of IBM 8 laundering patterns with per-pattern recall ≥ 70%",
-    human: "Strong on 7 of 8 known laundering patterns",
-    target: "≥ 75% (6 / 8)",
-    targetValue: 75,
-    comparison: "≥",
-    current: 87.5,
-    unit: "%",
-    formula: "(Patterns passing threshold / 8) × 100",
-    hint: "Healthy coverage — BIPARTITE pattern still trails and warrants tuning",
-    trend: "flat",
-    trendDelta: "0 pts vs last week",
-    status: "green",
   },
   {
     id: "precision",
     name: "Precision",
     icon: <Target className="w-4 h-4" />,
     description: "Share of flagged transactions that are true suspicious cases",
-    human: "~28 of every 100 alerts are confirmed as real risks",
-    target: "≥ 30%",
-    targetValue: 30,
+    human: "~88 of every 100 alerts are confirmed as real risks",
+    target: "≥ 86%",
+    targetValue: 86,
     comparison: "≥",
-    current: 28.4,
+    current: 88.0,
     unit: "%",
     formula: "TP / (TP + FP)",
-    hint: "Low alert quality — adjust threshold or retrain to improve confirmation rate",
+    hint: "Within target — alert quality is acceptable.",
+    trend: "flat",
+    trendDelta: "+0.3 pts vs last week",
+    status: "green",
+  },
+  {
+    id: "f1",
+    name: "F1-Score",
+    icon: <Activity className="w-4 h-4" />,
+    description: "Harmonic mean of Precision and Recall",
+    human: "Balanced score sits below target, signaling uneven performance",
+    target: "≥ 82%",
+    targetValue: 82,
+    comparison: "≥",
+    current: 78.0,
+    unit: "%",
+    formula: "2 * (Precision * Recall) / (Precision + Recall)",
+    hint: "Below target — tune thresholds or refresh training data.",
     trend: "down",
-    trendDelta: "−0.8 pts vs last week",
-    status: "yellow",
+    trendDelta: "−0.9 pts vs last week",
+    status: "red",
+  },
+  {
+    id: "accuracy",
+    name: "Accuracy",
+    icon: <CheckCircle2 className="w-4 h-4" />,
+    description: "Share of all transactions correctly classified",
+    human: "Overall classification accuracy remains stable",
+    target: "≥ 80%",
+    targetValue: 80,
+    comparison: "≥",
+    current: 81.0,
+    unit: "%",
+    formula: "(TP + TN) / (TP + TN + FP + FN)",
+    hint: "Within target — overall correctness is acceptable.",
+    trend: "flat",
+    trendDelta: "+0.1 pts vs last week",
+    status: "green",
+  },
+  {
+    id: "mcc",
+    name: "Matthews Correlation Coefficient (MCC)",
+    icon: <ShieldCheck className="w-4 h-4" />,
+    description: "Balanced correlation across TP, TN, FP, and FN",
+    human: "MCC captures all four outcomes in one score (-1 to 1)",
+    target: "≥ 0.60",
+    targetValue: 0.6,
+    comparison: "≥",
+    current: 0.55,
+    unit: "ratio",
+    formula: "((TP*TN)-(FP*FN)) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))",
+    note: "MCC is robust to class imbalance and uses all four confusion-matrix terms.",
+    hint: "Below target — model stability is weakening and requires investigation.",
+    trend: "down",
+    trendDelta: "−0.04 vs last week",
+    status: "red",
   },
 ];
 
@@ -199,9 +199,19 @@ function TrendIcon({ trend, delta }: { trend: Trend; delta: string }) {
 function GaugeBar({ kpi }: { kpi: Kpi }) {
   // Normalize: for ≥ comparisons, fill = current / 100. For ≤ comparisons, fill = current / (target * 2.5) capped.
   const m = statusMeta[kpi.status];
-  const max = kpi.comparison === "≥" ? 100 : Math.max(kpi.targetValue * 2.5, kpi.current * 1.1);
-  const pct = Math.min(100, (kpi.current / max) * 100);
-  const targetPct = Math.min(100, (kpi.targetValue / max) * 100);
+  const min = kpi.unit === "ratio" ? -1 : 0;
+  const max =
+    kpi.unit === "ratio"
+      ? 1
+      : kpi.comparison === "≥"
+        ? 100
+        : Math.max(kpi.targetValue * 2.5, kpi.current * 1.1);
+  const clamped = Math.min(max, Math.max(min, kpi.current));
+  const pct = Math.min(100, ((clamped - min) / (max - min)) * 100);
+  const targetPct = Math.min(100, ((kpi.targetValue - min) / (max - min)) * 100);
+  const unitLabel = kpi.unit === "ratio" ? "" : kpi.unit;
+  const minLabel = kpi.unit === "ratio" ? "-1" : "0";
+  const maxLabel = kpi.unit === "ratio" ? "1" : `${Math.round(max)}`;
   return (
     <div className="w-full">
       <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -213,9 +223,9 @@ function GaugeBar({ kpi }: { kpi: Kpi }) {
         />
       </div>
       <div className="flex items-center justify-between mt-1 text-slate-500 tabular-nums" style={{ fontSize: 10 }}>
-        <span>0{kpi.unit}</span>
+        <span>{minLabel}{unitLabel}</span>
         <span>Target {kpi.target}</span>
-        <span>{Math.round(max)}{kpi.unit}</span>
+        <span>{maxLabel}{unitLabel}</span>
       </div>
     </div>
   );
@@ -226,12 +236,12 @@ type SystemStatus = "Stable" | "Warning" | "Critical";
 function deriveSystemStatus(items: Kpi[]): { status: SystemStatus; reasoning: string } {
   const offenders = items.filter((k) => k.status !== "green");
   const criticalKpiViolated = items.some(
-    (k) => (k.id === "recall" || k.id === "fpr") && k.status === "red"
+    (k) => (k.id === "recall" || k.id === "mcc") && k.status === "red"
   );
   if (criticalKpiViolated) {
     return {
       status: "Critical",
-      reasoning: "A critical KPI (Recall or FPR) is in violation. Immediate decision required.",
+      reasoning: "A critical KPI (Recall or MCC) is in violation. Immediate decision required.",
     };
   }
   if (offenders.length === 0) {
@@ -243,52 +253,56 @@ function deriveSystemStatus(items: Kpi[]): { status: SystemStatus; reasoning: st
   };
 }
 
-function deriveActions(items: Kpi[]): {
-  primary: { label: string; action: string; tone: "danger" | "warn" | "ok"; reason: string };
+function deriveActions(
+  items: Kpi[],
+  decisionAction: DecisionAction,
+): {
+  primary: { label: string; action: "retrain" | "threshold" | "optimize" | "continue"; tone: "danger" | "warn" | "ok"; reason: string };
   secondary: { label: string; reason: string }[];
 } {
   const recall = items.find((k) => k.id === "recall")!;
-  const fpr = items.find((k) => k.id === "fpr")!;
-  const flagged = items.find((k) => k.id === "flagged")!;
-  const coverage = items.find((k) => k.id === "coverage")!;
   const precision = items.find((k) => k.id === "precision")!;
+  const f1 = items.find((k) => k.id === "f1")!;
+  const accuracy = items.find((k) => k.id === "accuracy")!;
+  const mcc = items.find((k) => k.id === "mcc")!;
   const offenders = items.filter((k) => k.status !== "green").length;
 
   const recs: { label: string; reason: string }[] = [];
-  if (recall.status !== "green") recs.push({ label: "Lower threshold to improve detection", reason: `Recall ${recall.current}% is below the ${recall.target} target.` });
-  if (fpr.status === "red" || flagged.status === "red") recs.push({ label: "Increase threshold to reduce false alerts", reason: `Flagged Rate ${flagged.current}% breaches the ${flagged.target} ceiling.` });
-  if (coverage.status === "red") recs.push({ label: "Retrain model to address blind spots", reason: `Pattern Coverage ${coverage.current}% below ${coverage.target}.` });
-  if (precision.status !== "green") recs.push({ label: "Review threshold or retrain for alert quality", reason: `Precision ${precision.current}% near or below ${precision.target}.` });
-  if (offenders >= 3) recs.push({ label: "Consider model rollback or retraining", reason: `${offenders} KPIs are simultaneously degrading.` });
+  if (recall.status !== "green") recs.push({ label: "Recover Recall", reason: `Recall ${recall.current}% is below the ${recall.target} target.` });
+  if (precision.status !== "green") recs.push({ label: "Improve Precision", reason: `Precision ${precision.current}% is below ${precision.target}.` });
+  if (f1.status !== "green") recs.push({ label: "Balance F1", reason: `F1-Score ${f1.current}% is below ${f1.target}.` });
+  if (accuracy.status !== "green") recs.push({ label: "Verify Accuracy", reason: `Accuracy ${accuracy.current}% is below ${accuracy.target}.` });
+  if (mcc.status !== "green") recs.push({ label: "Audit MCC", reason: `MCC ${mcc.current} is below ${mcc.target}.` });
+  if (offenders >= 3) recs.push({ label: "Review model stability", reason: `${offenders} KPIs are simultaneously degrading.` });
 
   let primary: ReturnType<typeof deriveActions>["primary"];
-  if (recall.status === "red" || offenders >= 3) {
+  if (decisionAction === "Retrain_Model") {
     primary = {
       label: "Retrain model",
       action: "retrain",
       tone: "danger",
-      reason: "Detection capability is degraded — retraining is the safest path to restore Recall.",
+      reason: "Concept drift detected — retraining is required to restore model validity.",
     };
-  } else if (flagged.status === "red" || fpr.status === "red") {
+  } else if (decisionAction === "Tune_Model") {
     primary = {
-      label: "Adjust threshold",
+      label: "Tune model",
       action: "threshold",
       tone: "warn",
-      reason: "Workload pressure can be relieved by raising τ before any model change.",
+      reason: "Data drift detected — tune thresholds or features before retraining.",
     };
-  } else if (offenders === 0) {
+  } else if (decisionAction === "Optimize_System") {
+    primary = {
+      label: "Optimize system",
+      action: "optimize",
+      tone: "warn",
+      reason: "System efficiency is degraded — optimize resources and latency first.",
+    };
+  } else {
     primary = {
       label: "Continue current model",
       action: "continue",
       tone: "ok",
       reason: "All KPIs within target — no model intervention required.",
-    };
-  } else {
-    primary = {
-      label: "Adjust threshold",
-      action: "threshold",
-      tone: "warn",
-      reason: "Minor drift — retune τ before considering retraining.",
     };
   }
 
@@ -296,22 +310,32 @@ function deriveActions(items: Kpi[]): {
 }
 
 export function ObjectivesScreen() {
-  const system = useMemo(() => deriveSystemStatus(kpis), []);
-  const actions = useMemo(() => deriveActions(kpis), []);
-
-  const signals: Signals = useMemo(
+  const signals: AllSignals = useMemo(
     () => ({
-      recall: 82.3,
-      fpr: 14.1,
-      flaggedRate: 13.2,
-      patternCoverage: 87.5,
-      precision: 28.4,
-      drift: "Yes",
-      system: "OK",
+      mcc: 0.55,
+      precision: 0.88,
+      recall: 0.83,
+      f1: 0.78,
+      accuracy: 0.81,
+      graphDensity: 0.35,
+      nodeCentrality: 0.52,
+      motifSimilarity: 0.72,
+      featureImportance: 0.08,
+      edgeWeights: 0.45,
+      learningRate: 0.005,
+      treeDepth: 6,
+      missingPct: 0.02,
+      labelImbalance: 8.5,
+      psi: 0.07,
+      throughput: 145,
+      latencyMs: 220,
+      cpuRamUsage: 0.65,
     }),
     [],
   );
-  const decision = useMemo(() => evaluate(signals), [signals]);
+  const { decision, trace } = useMemo(() => evaluate(signals), [signals]);
+  const system = useMemo(() => deriveSystemStatus(kpis), []);
+  const actions = useMemo(() => deriveActions(kpis, decision.action), [decision.action]);
   const tone = toneClasses[decision.tone];
 
   const [traceOpen, setTraceOpen] = useState(false);
@@ -320,14 +344,14 @@ export function ObjectivesScreen() {
   const [thresholdDraft, setThresholdDraft] = useState(0.5);
   const [rollbackInput, setRollbackInput] = useState("");
 
-  const previewRecall = Math.max(55, 98 - thresholdDraft * 28).toFixed(1);
-  const previewFpr = Math.max(2, 32 - thresholdDraft * 32).toFixed(1);
+  const previewRecall = Math.max(70, 96 - thresholdDraft * 30).toFixed(1);
+  const previewPrecision = Math.min(98, 50 + thresholdDraft * 45).toFixed(1);
 
   const handleContinue = () => {
     pushToast({
       tone: "green",
       title: "Model continues monitoring / โมเดลดำเนินการต่อ",
-      sub: "Rule 1 Active — no intervention required",
+      sub: "Rule 8-1 Active — no intervention required",
     });
   };
   const handleApplyThreshold = () => {
@@ -335,7 +359,14 @@ export function ObjectivesScreen() {
     pushToast({
       tone: "amber",
       title: `Threshold updated to τ = ${thresholdDraft.toFixed(2)}`,
-      sub: "อัปเดต Threshold แล้ว",
+      sub: `Recall ${previewRecall}% · Precision ${previewPrecision}%`,
+    });
+  };
+  const handleOptimize = () => {
+    pushToast({
+      tone: "amber",
+      title: "Optimizing system resources",
+      sub: "Scaling queues and rebalancing CPU/RAM allocation.",
     });
   };
   const handleRetrainConfirm = (label: string) => {
@@ -385,6 +416,24 @@ export function ObjectivesScreen() {
       : actions.primary.tone === "warn"
         ? "bg-amber-500 hover:bg-amber-600 text-white"
         : "bg-emerald-600 hover:bg-emerald-700 text-white";
+
+  const primaryActionThai =
+    actions.primary.action === "retrain"
+      ? "ฝึกโมเดลใหม่"
+      : actions.primary.action === "threshold"
+        ? "ปรับแต่งโมเดล"
+        : actions.primary.action === "optimize"
+          ? "ปรับปรุงระบบ"
+          : "ดำเนินการต่อ";
+
+  const primaryActionSubThai =
+    actions.primary.action === "retrain"
+      ? "ควรฝึกโมเดลใหม่เพื่อแก้ Concept Drift"
+      : actions.primary.action === "threshold"
+        ? "ปรับค่าเพื่อให้ Precision และ Recall สมดุล"
+        : actions.primary.action === "optimize"
+          ? "เพิ่มประสิทธิภาพระบบก่อนปรับโมเดล"
+          : "ทุกค่าอยู่ในเกณฑ์ที่ยอมรับได้";
 
   return (
     <div className="space-y-6">
@@ -514,7 +563,7 @@ export function ObjectivesScreen() {
                   Rule trace · {decision.rule} → <span className={tone.text}>{decision.tag}</span>
                 </div>
                 <div className="text-slate-500 mt-0.5" style={{ fontSize: 12 }}>
-                  Conditions evaluated against the live KPI snapshot. Rules are applied in priority order: 5 → 2 → 3 → 4 → 1.
+                  Conditions evaluated against the live KPI snapshot. Rules are evaluated across the 8 rule sets (1 → 8).
                 </div>
               </div>
               <button
@@ -579,7 +628,7 @@ export function ObjectivesScreen() {
                   Rule Applied / <span style={{ fontFamily: "'Noto Sans Thai', sans-serif", textTransform: "none", letterSpacing: 0 }}>Rule ที่ใช้</span>
                 </div>
                 <div className="mt-2 text-slate-700" style={{ fontSize: 12, lineHeight: 1.55 }}>
-                  <b className="text-slate-900">Rule 2:</b> Drift == Yes AND Recall &lt; 85% → <span className="text-rose-600" style={{ fontWeight: 700 }}>RE-TRAIN MODEL</span>
+                    <b className="text-slate-900">Rule 8:</b> Concept Drift = {trace.conceptDrift.result} · Data Drift = {trace.dataDrift.result} · System Efficiency = {trace.systemEfficiency.result} → <span className={tone.text} style={{ fontWeight: 700 }}>{decision.tag}</span>
                 </div>
               </div>
             </div>
@@ -598,11 +647,11 @@ export function ObjectivesScreen() {
               <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif", textTransform: "none", letterSpacing: 0 }}>การดำเนินการที่แนะนำ</span>
             </div>
             <div className="mt-1 text-slate-900" style={{ fontSize: 16, fontWeight: 600 }}>
-              {actions.primary.label} / <span style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>{actions.primary.action === "retrain" ? "ฝึกโมเดลใหม่" : actions.primary.action === "threshold" ? "ปรับ Threshold" : actions.primary.action === "continue" ? "ดำเนินการต่อ" : "ตรวจสอบ"}</span>
+              {actions.primary.label} / <span style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>{primaryActionThai}</span>
             </div>
             <div className="text-slate-600 mt-0.5" style={{ fontSize: 12 }}>{actions.primary.reason}</div>
             <div className="text-slate-500 mt-1" style={{ fontSize: 12, fontFamily: "'Noto Sans Thai', sans-serif" }}>
-              ความสามารถในการตรวจจับลดลง — การฝึกใหม่คือทางที่ปลอดภัยที่สุด
+              {primaryActionSubThai}
             </div>
 
             {actions.secondary.length > 0 && (
@@ -617,7 +666,7 @@ export function ObjectivesScreen() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:min-w-[560px]">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 lg:min-w-[700px]">
             <Button onClick={handleContinue} className={`h-12 rounded-lg ${actions.primary.action === "continue" ? primaryToneClasses : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`} style={{ fontSize: 12 }}>
               <Play className="w-3.5 h-3.5 mr-1.5" />
               <span className="flex flex-col items-start leading-tight">
@@ -628,8 +677,8 @@ export function ObjectivesScreen() {
             <Button onClick={() => { setThresholdDraft(0.5); setModal("threshold"); }} className={`h-12 rounded-lg ${actions.primary.action === "threshold" ? primaryToneClasses : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`} style={{ fontSize: 12 }}>
               <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
               <span className="flex flex-col items-start leading-tight">
-                <span className="lang-en">Adjust threshold</span>
-                <span className="lang-th" style={{ fontSize: 10, opacity: 0.8, fontFamily: "'Noto Sans Thai', sans-serif" }}>ปรับ Threshold</span>
+                <span className="lang-en">Tune model</span>
+                <span className="lang-th" style={{ fontSize: 10, opacity: 0.8, fontFamily: "'Noto Sans Thai', sans-serif" }}>ปรับแต่งโมเดล</span>
               </span>
             </Button>
             <Button onClick={() => setModal("retrain")} title="ฝึกโมเดลใหม่" className={`h-12 rounded-lg ${actions.primary.action === "retrain" ? primaryToneClasses : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`} style={{ fontSize: 12 }}>
@@ -637,6 +686,13 @@ export function ObjectivesScreen() {
               <span className="flex flex-col items-start leading-tight">
                 <span className="lang-en">Retrain model</span>
                 <span className="lang-th" style={{ fontSize: 10, opacity: 0.8, fontFamily: "'Noto Sans Thai', sans-serif" }}>ฝึกโมเดลใหม่</span>
+              </span>
+            </Button>
+            <Button onClick={handleOptimize} className={`h-12 rounded-lg ${actions.primary.action === "optimize" ? primaryToneClasses : "bg-slate-100 hover:bg-slate-200 text-slate-700"}`} style={{ fontSize: 12 }}>
+              <CircuitBoard className="w-3.5 h-3.5 mr-1.5" />
+              <span className="flex flex-col items-start leading-tight">
+                <span className="lang-en">Optimize system</span>
+                <span className="lang-th" style={{ fontSize: 10, opacity: 0.8, fontFamily: "'Noto Sans Thai', sans-serif" }}>ปรับปรุงระบบ</span>
               </span>
             </Button>
             <Button onClick={() => { setRollbackInput(""); setModal("rollback"); }} className="h-12 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700" style={{ fontSize: 12 }}>
@@ -714,7 +770,7 @@ export function ObjectivesScreen() {
                     <td className="px-5 py-4">
                       <div className="flex items-baseline gap-2">
                         <span className={`tabular-nums ${k.status === "red" ? "text-rose-600" : k.status === "yellow" ? "text-amber-600" : "text-emerald-600"}`} style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.4 }}>
-                          {k.current}{k.unit}
+                          {k.current}{k.unit === "ratio" ? "" : k.unit}
                         </span>
                         <span className="text-slate-400" style={{ fontSize: 11 }}>/ {k.target}</span>
                       </div>
@@ -760,7 +816,7 @@ export function ObjectivesScreen() {
         open={modal === "threshold"}
         onClose={() => setModal(null)}
         title="Adjust Detection Threshold / ปรับค่า Threshold"
-        subtitle="Drag to preview Recall and FPR at the new τ before applying."
+        subtitle="Drag to preview Recall and Precision at the new τ before applying."
         tone="blue"
         footer={
           <>
@@ -792,8 +848,8 @@ export function ObjectivesScreen() {
             <div style={{ fontSize: 22, color: "#10B981", fontWeight: 700, marginTop: 4 }}>{previewRecall}%</div>
           </div>
           <div style={{ padding: 12, borderRadius: 8, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)" }}>
-            <div style={{ fontSize: 11, color: "#8FA3BC", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 }}>Estimated FPR</div>
-            <div style={{ fontSize: 22, color: "#F59E0B", fontWeight: 700, marginTop: 4 }}>{previewFpr}%</div>
+            <div style={{ fontSize: 11, color: "#8FA3BC", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700 }}>Estimated Precision</div>
+            <div style={{ fontSize: 22, color: "#F59E0B", fontWeight: 700, marginTop: 4 }}>{previewPrecision}%</div>
           </div>
         </div>
       </ModalShell>
@@ -803,7 +859,7 @@ export function ObjectivesScreen() {
         open={modal === "retrain"}
         onClose={() => setModal(null)}
         title="Confirm Re-train / ยืนยันการฝึกโมเดลใหม่"
-        subtitle="This will trigger Rule 2 action. Estimated duration: 2–4 hours. การดำเนินการนี้จะใช้เวลา 2–4 ชั่วโมง"
+        subtitle="This will trigger Rule 8-2 action. Estimated duration: 2–4 hours. การดำเนินการนี้จะใช้เวลา 2–4 ชั่วโมง"
         tone="amber"
         footer={
           <>

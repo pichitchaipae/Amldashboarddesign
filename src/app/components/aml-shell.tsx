@@ -200,8 +200,8 @@ const INIT_NOTIFS: NotifItem[] = [
   {
     id: "n1",
     tone: "red",
-    title: "Rule 2 Triggered / Rule 2 ถูก Trigger แล้ว",
-    body: "Recall ลดเหลือ 78% · Concept Drift Detected",
+    title: "Rule 8 Triggered / Rule 8 ถูก Trigger แล้ว",
+    body: "MCC ลดเหลือ 0.55 · Concept Drift Detected",
     time: "2 min ago / 2 นาทีที่แล้ว",
     cta: { label: "View Rule / ดู Rule", target: "aria" },
     unread: true,
@@ -209,8 +209,8 @@ const INIT_NOTIFS: NotifItem[] = [
   {
     id: "n2",
     tone: "amber",
-    title: "Pattern Coverage Warning / คำเตือน Pattern Coverage",
-    body: "Pattern Coverage อยู่ที่ 75% ต่ำกว่า Target 80%",
+    title: "F1-Score Warning / คำเตือน F1-Score",
+    body: "F1-Score อยู่ที่ 0.78 ต่ำกว่า Target 0.82",
     time: "15 min ago / 15 นาทีที่แล้ว",
     cta: { label: "View KPI / ดู KPI", target: "objectives" },
     unread: true,
@@ -412,11 +412,11 @@ function NotificationBell({ onSwitchScreen }: { onSwitchScreen: (s: ScreenId) =>
 type MiniKpi = { label: string; value: string; tone: "pass" | "warn" | "fail" };
 
 const MINI_KPIS: MiniKpi[] = [
-  { label: "Recall", value: "78.0%", tone: "fail" },
-  { label: "FPR", value: "16.4%", tone: "pass" },
-  { label: "Flagged", value: "8.7%", tone: "warn" },
-  { label: "Pattern Coverage", value: "75.0%", tone: "warn" },
-  { label: "Precision", value: "29.1%", tone: "warn" },
+  { label: "Recall", value: "85.0%", tone: "pass" },
+  { label: "Precision", value: "86.0%", tone: "pass" },
+  { label: "F1-Score", value: "78.0%", tone: "fail" },
+  { label: "Accuracy", value: "81.0%", tone: "pass" },
+  { label: "MCC", value: "0.55", tone: "fail" },
 ];
 
 const TONE_COLOR: Record<MiniKpi["tone"], string> = {
