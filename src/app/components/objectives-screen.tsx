@@ -556,14 +556,34 @@ export function DetectionOverviewScreen() {
                       <div>30d window</div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
-                    <div>
-                      <div className="text-slate-500" style={{ fontSize: 11 }}>Cross-Border Ratio</div>
-                      <div className="text-rose-600" style={{ fontSize: 18, fontWeight: 800 }}>{BUSINESS_METRICS.crossBorderRatio}</div>
+                  <div className="rounded-xl bg-white border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div>
+                        <div className="text-slate-500" style={{ fontSize: 11 }}>Cross-Border Ratio</div>
+                        <div className="text-rose-600" style={{ fontSize: 18, fontWeight: 800 }}>{BUSINESS_METRICS.crossBorderRatio}</div>
+                      </div>
+                      <div className="text-right" style={{ fontSize: 12 }}>
+                        <div className="font-semibold text-rose-600">Critical / วิกฤต</div>
+                        <div className="text-slate-500">Above 60% limit</div>
+                      </div>
                     </div>
-                    <div className="text-right" style={{ fontSize: 12 }}>
-                      <div className="font-semibold text-rose-600">Critical / วิกฤต</div>
-                      <div className="text-slate-500">Above tolerance</div>
+                    <div className="flex flex-col gap-2">
+                      <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div 
+                          className="h-full bg-rose-500"
+                          style={{ width: "73.1%" }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-rose-500" />
+                          <span className="text-slate-600">Cross-border: 73.1%</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-slate-300" />
+                          <span className="text-slate-600">Domestic: 26.9%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
