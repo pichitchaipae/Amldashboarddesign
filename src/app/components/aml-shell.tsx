@@ -22,10 +22,10 @@ export const C = {
 
 export const FONT = "'Inter', 'Noto Sans Thai', system-ui, sans-serif";
 
-export type ScreenId = "objectives" | "aria";
+export type ScreenId = "overview" | "aria";
 
 const TABS: { id: ScreenId; label: string }[] = [
-  { id: "objectives", label: "Objectives & KPIs" },
+  { id: "overview", label: "Detection Overview" },
   { id: "aria", label: "ARIA Assistant" },
 ];
 
@@ -212,7 +212,7 @@ const INIT_NOTIFS: NotifItem[] = [
     title: "F1-Score Warning / คำเตือน F1-Score",
     body: "F1-Score อยู่ที่ 0.78 ต่ำกว่า Target 0.82",
     time: "15 min ago / 15 นาทีที่แล้ว",
-    cta: { label: "View KPI / ดู KPI", target: "objectives" },
+    cta: { label: "View overview / ดูภาพรวม", target: "overview" },
     unread: true,
   },
   {
@@ -412,8 +412,8 @@ function NotificationBell({ onSwitchScreen }: { onSwitchScreen: (s: ScreenId) =>
 type MiniKpi = { label: string; value: string; tone: "pass" | "warn" | "fail" };
 
 const MINI_KPIS: MiniKpi[] = [
-  { label: "Recall", value: "85.0%", tone: "pass" },
-  { label: "Precision", value: "86.0%", tone: "pass" },
+  { label: "Recall", value: "83.0%", tone: "fail" },
+  { label: "Precision", value: "88.0%", tone: "pass" },
   { label: "F1-Score", value: "78.0%", tone: "fail" },
   { label: "Accuracy", value: "81.0%", tone: "pass" },
   { label: "MCC", value: "0.55", tone: "fail" },

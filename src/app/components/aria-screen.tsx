@@ -97,6 +97,16 @@ type ChatMsg = {
   body?: React.ReactNode;
 };
 
+type ChoiceAction = "retrain" | "schedule" | "detail" | "monitor" | "threshold" | "simulate" | "optimize" | "rollback";
+
+type ChatChoice = {
+  k: string;
+  label: string;
+  en: string;
+  tone: string;
+  action: ChoiceAction;
+};
+
 type ScreenId = ShellScreenId;
 
 export function AriaScreen({
@@ -216,16 +226,16 @@ export function AriaScreen({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isTyping]);
 
-  const handleChoice = (label: string) => {
+  const handleChoice = (choice: ChatChoice) => {
     pushToast({
       tone: "green",
       title: "Action Queued / รับคำสั่ง",
-      sub: `ดำเนินการ: ${label}`,
+      sub: `ดำเนินการ: [${choice.k}] ${choice.label}`,
     });
 
     setMessages((prev) => [
       ...prev,
-      { id: `u-${Date.now()}`, from: "user", kind: "text", body: label },
+      { id: `u-${Date.now()}`, from: "user", kind: "text", body: `[${choice.k}] ${choice.label}` },
       {
         id: `b-${Date.now()}`,
         from: "bot",
@@ -233,17 +243,58 @@ export function AriaScreen({
         body: (
           <span>
             <L
-              en={`✅ Command received: ${label}. The action is queued and logged.`}
-              th={`✅ คำสั่งรับเรียบร้อย: ${label}. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.`}
+              en={`✅ Command received: [${choice.k}] ${choice.label}. The action is queued and logged.`}
+              th={`✅ คำสั่งรับเรียบร้อย: [${choice.k}] ${choice.label}. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.`}
             />
           </span>
         ),
       },
     ]);
+
+    if (choice.action === "retrain") {
+      setRuleModal("retrain");
+      return;
+    }
+
+    if (choice.action === "schedule") {
+      setRuleModal("schedule");
+      return;
+    }
+
+    if (choice.action === "threshold") {
+      setRuleModal("threshold");
+      return;
+    }
+
+    if (choice.action === "rollback") {
+      setRuleModal("rollback");
+      return;
+    }
+
+    if (choice.action === "detail") {
+      setExpandedRule(8);
+      pushToast({ tone: "blue", title: "Opening details", sub: "ขยาย Rule 8 · Final Action" });
+      return;
+    }
+
+    if (choice.action === "monitor") {
+      pushToast({ tone: "amber", title: "Monitoring continued", sub: "กำลัง Monitor ต่อ — จะแจ้งเตือนเมื่อ KPI เปลี่ยน" });
+      return;
+    }
+
+    if (choice.action === "simulate") {
+      pushToast({ tone: "blue", title: "Simulation started", sub: "กำลังจำลองผลกระทบของ KPI" });
+      return;
+    }
+
+    if (choice.action === "optimize") {
+      pushToast({ tone: "amber", title: "Optimizing system", sub: "กำลังปรับปรุง resource และ latency" });
+    }
   };
 
   const handleSend = (textOverride?: string) => {
-    const t = (textOverride || input).trim();
+    const source = typeof textOverride === "string" ? textOverride : input;
+    const t = source.trim();
     if (!t) return;
 
     setInput("");
@@ -666,30 +717,30 @@ export function AriaScreen({
                   const choices =
                     decision.action === "Retrain_Model"
                       ? [
-                          { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red },
-                          { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber },
-                          { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue },
-                          { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                          { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red, action: "retrain" },
+                          { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber, action: "schedule" },
+                          { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue, action: "detail" },
+                          { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                         ]
                       : decision.action === "Tune_Model"
                         ? [
-                            { k: "A", label: "Tune Threshold ตอนนี้", en: "Tune threshold", tone: C.amber },
-                            { k: "B", label: "Simulate KPI Impact", en: "Run simulation", tone: C.blue },
-                            { k: "C", label: "ดู Data Drift Detail", en: "Review drift detail", tone: C.blue },
-                            { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                            { k: "A", label: "Tune Threshold ตอนนี้", en: "Tune threshold", tone: C.amber, action: "threshold" },
+                            { k: "B", label: "Simulate KPI Impact", en: "Run simulation", tone: C.blue, action: "simulate" },
+                            { k: "C", label: "ดู Data Drift Detail", en: "Review drift detail", tone: C.blue, action: "detail" },
+                            { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                           ]
                         : decision.action === "Optimize_System"
                           ? [
-                              { k: "A", label: "Optimize ตอนนี้", en: "Optimize system", tone: C.blue },
-                              { k: "B", label: "Scale ช่วง Off-peak", en: "Off-peak scale", tone: C.amber },
-                              { k: "C", label: "ดู System Detail", en: "Review system detail", tone: C.blue },
-                              { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                              { k: "A", label: "Optimize ตอนนี้", en: "Optimize system", tone: C.blue, action: "optimize" },
+                              { k: "B", label: "Scale ช่วง Off-peak", en: "Off-peak scale", tone: C.amber, action: "schedule" },
+                              { k: "C", label: "ดู System Detail", en: "Review system detail", tone: C.blue, action: "detail" },
+                              { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                             ]
                           : [
-                              { k: "A", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.green },
-                              { k: "B", label: "ดู Rule Trace", en: "Review rule trace", tone: C.blue },
-                              { k: "C", label: "ดู KPI Detail", en: "Review KPI detail", tone: C.blue },
-                              { k: "D", label: "No Action", en: "No action", tone: C.faint },
+                              { k: "A", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.green, action: "monitor" },
+                              { k: "B", label: "ดู Rule Trace", en: "Review rule trace", tone: C.blue, action: "detail" },
+                              { k: "C", label: "ดู KPI Detail", en: "Review KPI detail", tone: C.blue, action: "detail" },
+                              { k: "D", label: "No Action", en: "No action", tone: C.faint, action: "monitor" },
                             ];
                   return (
                     <div
@@ -704,7 +755,7 @@ export function AriaScreen({
                         <button
                           key={`choice-${c.k}`}
                           type="button"
-                          onClick={() => handleChoice(`[${c.k}] ${c.label}`)}
+                          onClick={() => handleChoice(c)}
                           style={{
                             background: C.cardHi,
                             border: `1px solid ${C.border}`,
@@ -962,7 +1013,7 @@ export function AriaScreen({
               </div>
               <button
                 type="button"
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 aria-label="Send"
                 style={{
                   width: 40,
@@ -1573,13 +1624,13 @@ function renderChatResponse(response: ChatResponse, onSend: (msg: string) => voi
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontWeight: 700 }}><L en={getEn(response.title)} th={getTh(response.title)} /></div>
-      <div style={{ color: C.text }}><L en={getEn(response.message)} th={getTh(response.message)} /></div>
+      <div style={{ color: C.text, whiteSpace: "pre-line" }}><L en={getEn(response.message)} th={getTh(response.message)} /></div>
       {response.details && response.details.length > 0 && (
-        <ul style={{ margin: 0, paddingLeft: 16, color: C.subtext }}>
+        <ol style={{ margin: 0, paddingLeft: 18, color: C.subtext, display: "flex", flexDirection: "column", gap: 6 }}>
           {response.details.map((d, i) => (
-            <li key={`d-${i}`}><L en={getEn(d)} th={getTh(d)} /></li>
+            <li key={`d-${i}`} style={{ whiteSpace: "pre-line" }}><L en={getEn(d)} th={getTh(d)} /></li>
           ))}
-        </ul>
+        </ol>
       )}
       {response.followups && response.followups.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>

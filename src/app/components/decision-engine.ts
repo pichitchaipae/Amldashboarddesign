@@ -778,84 +778,60 @@ function buildRemediationMessage(key: KpiKey, signals: AllSignals, trace: RuleTr
   let confidenceEn = "Medium";
   let rationaleTh = "เหมาะกับสถานการณ์ตอนนี้และทำได้เร็ว";
   let rationaleEn = "Best fit for current urgency and effort";
+  let introTh = "เลือกทางออกที่เหมาะกับสถานการณ์ตอนนี้";
+  let introEn = "Pick the option that fits the current situation best";
 
   if (decision.action === "Retrain_Model") {
-    optionATh = "ทางออก A -- Retrain ทันทีด้วยข้อมูลปัจจุบัน\n  ทำอะไร   : ใช้ข้อมูลล่าสุด 6 เดือน retrain Champion model\n  ผลที่คาด  : KPI หลักกลับเข้าเป้าใน 1-2 สัปดาห์\n  ใช้เวลา   : 3-5 วันทำการ\n  ความเสี่ยง: กลาง\n  ข้อแลก    : ต้อง validate ก่อน deploy\n  ผู้รับผิดชอบ: Data Science Team";
-    optionAEn = "Option A -- Retrain now with recent data\n  Action: Retrain on the latest 6 months\n  Expected: KPIs return to target in 1-2 weeks\n  Time: 3-5 working days\n  Risk: Medium\n  Trade-off: Must validate before deploy\n  Owner: Data Science Team";
-    optionBTh = "ทางออก B -- Retrain พร้อมปรับ Feature\n  ทำอะไร   : ทบทวน feature importance ก่อนปรับแล้วค่อย retrain\n  ผลที่คาด  : เสถียรขึ้นระยะยาว\n  ใช้เวลา   : 2-3 สัปดาห์\n  ความเสี่ยง: กลาง-สูง\n  ข้อแลก    : ใช้เวลานานกว่าและต้องมี business input\n  ผู้รับผิดชอบ: Data Science + Business Analyst";
-    optionBEn = "Option B -- Retrain with feature update\n  Action: Review feature importance then retrain\n  Expected: Better long-term stability\n  Time: 2-3 weeks\n  Risk: Medium-High\n  Trade-off: Longer cycle + business input needed\n  Owner: Data Science + Business Analyst";
-    optionCTh = "ทางออก C -- จับตาดูก่อน\n  ทำอะไร   : ติดตาม PSI/Recall ทุกวัน ถ้า PSI > 0.20 ให้ retrain\n  ผลที่คาด  : เสี่ยง performance แย่ลงถ้า drift ยังขยับ\n  ใช้เวลา   : 1-2 สัปดาห์\n  ความเสี่ยง: สูง\n  ข้อแลก    : ประหยัด resource แต่เสี่ยงสะสมปัญหา";
-    optionCEn = "Option C -- Monitor first\n  Action: Track PSI/Recall daily; retrain if PSI > 0.20\n  Expected: Risk of further drift if trend continues\n  Time: 1-2 weeks\n  Risk: High\n  Trade-off: Saves resources but risks bigger degradation";
+    optionATh = "1. ทางออก A: Retrain ทันทีด้วยข้อมูลปัจจุบัน\n   ทำอะไร   : ใช้ข้อมูลล่าสุด 6 เดือน retrain Champion model\n   ผลที่คาด  : KPI หลักกลับเข้าเป้าใน 1-2 สัปดาห์\n   ใช้เวลา   : 3-5 วันทำการ\n   ความเสี่ยง: กลาง\n   ข้อแลก    : ต้อง validate ก่อน deploy\n   ผู้รับผิดชอบ: Data Science Team";
+    optionAEn = "1. Option A: Retrain now with recent data\n   Action: Retrain on the latest 6 months\n   Expected: KPIs return to target in 1-2 weeks\n   Time: 3-5 working days\n   Risk: Medium\n   Trade-off: Must validate before deploy\n   Owner: Data Science Team";
+    optionBTh = "2. ทางออก B: Retrain พร้อมปรับ Feature\n   ทำอะไร   : ทบทวน feature importance ก่อนปรับแล้วค่อย retrain\n   ผลที่คาด  : เสถียรขึ้นระยะยาว\n   ใช้เวลา   : 2-3 สัปดาห์\n   ความเสี่ยง: กลาง-สูง\n   ข้อแลก    : ใช้เวลานานกว่าและต้องมี business input\n   ผู้รับผิดชอบ: Data Science + Business Analyst";
+    optionBEn = "2. Option B: Retrain with feature update\n   Action: Review feature importance then retrain\n   Expected: Better long-term stability\n   Time: 2-3 weeks\n   Risk: Medium-High\n   Trade-off: Longer cycle + business input needed\n   Owner: Data Science + Business Analyst";
+    optionCTh = "3. ทางออก C: จับตาดูก่อนแล้วค่อยตัดสินใจ\n   ทำอะไร   : ติดตาม PSI/Recall ทุกวัน ถ้า PSI > 0.20 ให้ retrain\n   ผลที่คาด  : เสี่ยง performance แย่ลงถ้า drift ยังขยับ\n   ใช้เวลา   : 1-2 สัปดาห์\n   ความเสี่ยง: สูง\n   ข้อแลก    : ประหยัด resource แต่เสี่ยงสะสมปัญหา";
+    optionCEn = "3. Option C: Monitor first, then decide\n   Action: Track PSI/Recall daily; retrain if PSI > 0.20\n   Expected: Risk of further drift if trend continues\n   Time: 1-2 weeks\n   Risk: High\n   Trade-off: Saves resources but risks bigger degradation";
+    introTh = "Model Drift ชัดเจน จึงควรเริ่มจากทางออกที่ลงมือได้เร็ว";
+    introEn = "Model Drift is clear, so start with the fastest actionable path";
     recommended = "A";
     confidenceTh = "สูง";
     confidenceEn = "High";
     rationaleTh = "Drift อยู่ระดับที่ควรทำทันทีและมีข้อมูลพอ";
     rationaleEn = "Drift level is actionable with enough data on hand";
   } else if (decision.action === "Tune_Model") {
-    optionATh = "ทางออก A -- ปรับ Threshold ทันที\n  ทำอะไร   : ปรับค่า threshold เพื่อบาลานซ์ Precision/Recall\n  ผลที่คาด  : KPI กลับเข้าเป้าเร็วขึ้น\n  ใช้เวลา   : ชั่วโมง-1 วัน\n  ความเสี่ยง: กลาง\n  ข้อแลก    : อาจทำให้ KPI อีกตัวตกชั่วคราว\n  ผู้รับผิดชอบ: Model Ops";
-    optionAEn = "Option A -- Tune threshold now\n  Action: Adjust threshold to balance Precision/Recall\n  Expected: Faster KPI recovery\n  Time: Hours-1 day\n  Risk: Medium\n  Trade-off: May hurt the other KPI temporarily\n  Owner: Model Ops";
-    optionBTh = "ทางออก B -- Retrain โมเดล\n  ทำอะไร   : retrain ด้วยข้อมูลล่าสุด\n  ผลที่คาด  : ลด drift ระยะกลาง\n  ใช้เวลา   : 3-5 วันทำการ\n  ความเสี่ยง: กลาง\n  ข้อแลก    : ใช้เวลามากกว่า\n  ผู้รับผิดชอบ: Data Science Team";
-    optionBEn = "Option B -- Retrain model\n  Action: Retrain with recent data\n  Expected: Reduce drift mid-term\n  Time: 3-5 working days\n  Risk: Medium\n  Trade-off: Slower than tuning\n  Owner: Data Science Team";
-    optionCTh = "ทางออก C -- จับตาดูก่อน\n  ทำอะไร   : monitor KPI รายวัน และมี trigger ชัดเจน\n  ผลที่คาด  : ถ้า drift ยังเพิ่ม จะต้องทำทันที\n  ใช้เวลา   : 1-2 สัปดาห์\n  ความเสี่ยง: สูง\n  ข้อแลก    : เสี่ยงสะสมปัญหา";
-    optionCEn = "Option C -- Monitor\n  Action: Daily KPI checks with clear triggers\n  Expected: Act fast if drift accelerates\n  Time: 1-2 weeks\n  Risk: High\n  Trade-off: Risk of delayed action";
+    optionATh = "1. ทางออก A: ปรับ Threshold ทันที\n   ทำอะไร   : ปรับค่า threshold เพื่อบาลานซ์ Precision/Recall\n   ผลที่คาด  : KPI กลับเข้าเป้าเร็วขึ้น\n   ใช้เวลา   : ชั่วโมง-1 วัน\n   ความเสี่ยง: กลาง\n   ข้อแลก    : อาจทำให้ KPI อีกตัวตกชั่วคราว\n   ผู้รับผิดชอบ: Model Ops";
+    optionAEn = "1. Option A: Tune threshold now\n   Action: Adjust threshold to balance Precision/Recall\n   Expected: Faster KPI recovery\n   Time: Hours-1 day\n   Risk: Medium\n   Trade-off: May hurt the other KPI temporarily\n   Owner: Model Ops";
+    optionBTh = "2. ทางออก B: Retrain โมเดล\n   ทำอะไร   : retrain ด้วยข้อมูลล่าสุด\n   ผลที่คาด  : ลด drift ระยะกลาง\n   ใช้เวลา   : 3-5 วันทำการ\n   ความเสี่ยง: กลาง\n   ข้อแลก    : ใช้เวลามากกว่า\n   ผู้รับผิดชอบ: Data Science Team";
+    optionBEn = "2. Option B: Retrain the model\n   Action: Retrain with recent data\n   Expected: Reduce drift mid-term\n   Time: 3-5 working days\n   Risk: Medium\n   Trade-off: Slower than tuning\n   Owner: Data Science Team";
+    optionCTh = "3. ทางออก C: Monitor ต่อและตั้ง trigger ชัดเจน\n   ทำอะไร   : monitor KPI รายวัน และมี trigger ชัดเจน\n   ผลที่คาด  : ถ้า drift ยังเพิ่ม จะต้องทำทันที\n   ใช้เวลา   : 1-2 สัปดาห์\n   ความเสี่ยง: สูง\n   ข้อแลก    : เสี่ยงสะสมปัญหา";
+    optionCEn = "3. Option C: Keep monitoring with clear triggers\n   Action: Daily KPI checks with clear triggers\n   Expected: Act fast if drift accelerates\n   Time: 1-2 weeks\n   Risk: High\n   Trade-off: Risk of delayed action";
+    introTh = "ตอนนี้ควรแก้ความไม่สมดุลของ Precision/Recall ให้เร็วที่สุด";
+    introEn = "The current issue is Precision/Recall imbalance, so act quickly";
     recommended = "A";
     confidenceTh = "กลาง";
     confidenceEn = "Medium";
     rationaleTh = "แก้ได้เร็วและต้นทุนต่ำกว่า retrain";
     rationaleEn = "Fastest correction with lower cost than retraining";
   } else if (decision.action === "Optimize_System") {
-    optionATh = "ทางออก A -- Optimize ระบบทันที\n  ทำอะไร   : ลด latency/ปรับ queue/เพิ่ม resource\n  ผลที่คาด  : SLA กลับมาปกติ\n  ใช้เวลา   : ชั่วโมง-2 วัน\n  ความเสี่ยง: กลาง\n  ข้อแลก    : ใช้ resource เพิ่ม\n  ผู้รับผิดชอบ: Platform/Infra";
-    optionAEn = "Option A -- Optimize system now\n  Action: Reduce latency, tune queue, add resources\n  Expected: SLA back to normal\n  Time: Hours-2 days\n  Risk: Medium\n  Trade-off: Higher resource cost\n  Owner: Platform/Infra";
-    optionBTh = "ทางออก B -- ปรับแบบ off-peak\n  ทำอะไร   : ทำ optimization ช่วงโหลดต่ำ\n  ผลที่คาด  : ลด impact ต่อ production\n  ใช้เวลา   : 2-5 วัน\n  ความเสี่ยง: กลาง\n  ข้อแลก    : ช้ากว่า\n  ผู้รับผิดชอบ: Platform/Infra";
-    optionBEn = "Option B -- Optimize off-peak\n  Action: Changes during low-traffic window\n  Expected: Less production impact\n  Time: 2-5 days\n  Risk: Medium\n  Trade-off: Slower recovery\n  Owner: Platform/Infra";
-    optionCTh = "ทางออก C -- จับตาดูก่อน\n  ทำอะไร   : monitor latency รายชั่วโมง\n  ผลที่คาด  : เสี่ยง SLA หลุดถ้าโหลดเพิ่ม\n  ใช้เวลา   : 1-2 สัปดาห์\n  ความเสี่ยง: สูง\n  ข้อแลก    : เสี่ยงสูงกว่า";
-    optionCEn = "Option C -- Monitor\n  Action: Hourly latency checks\n  Expected: SLA risk if load spikes\n  Time: 1-2 weeks\n  Risk: High\n  Trade-off: Higher operational risk";
+    optionATh = "1. ทางออก A: Optimize ระบบทันที\n   ทำอะไร   : ลด latency/ปรับ queue/เพิ่ม resource\n   ผลที่คาด  : SLA กลับมาปกติ\n   ใช้เวลา   : ชั่วโมง-2 วัน\n   ความเสี่ยง: กลาง\n   ข้อแลก    : ใช้ resource เพิ่ม\n   ผู้รับผิดชอบ: Platform/Infra";
+    optionAEn = "1. Option A: Optimize the system now\n   Action: Reduce latency, tune queue, add resources\n   Expected: SLA back to normal\n   Time: Hours-2 days\n   Risk: Medium\n   Trade-off: Higher resource cost\n   Owner: Platform/Infra";
+    optionBTh = "2. ทางออก B: ปรับแบบ off-peak\n   ทำอะไร   : ทำ optimization ช่วงโหลดต่ำ\n   ผลที่คาด  : ลด impact ต่อ production\n   ใช้เวลา   : 2-5 วัน\n   ความเสี่ยง: กลาง\n   ข้อแลก    : ช้ากว่า\n   ผู้รับผิดชอบ: Platform/Infra";
+    optionBEn = "2. Option B: Optimize off-peak\n   Action: Changes during low-traffic window\n   Expected: Less production impact\n   Time: 2-5 days\n   Risk: Medium\n   Trade-off: Slower recovery\n   Owner: Platform/Infra";
+    optionCTh = "3. ทางออก C: Monitor ต่อ\n   ทำอะไร   : monitor latency รายชั่วโมง\n   ผลที่คาด  : เสี่ยง SLA หลุดถ้าโหลดเพิ่ม\n   ใช้เวลา   : 1-2 สัปดาห์\n   ความเสี่ยง: สูง\n   ข้อแลก    : เสี่ยงสูงกว่า";
+    optionCEn = "3. Option C: Keep monitoring\n   Action: Hourly latency checks\n   Expected: SLA risk if load spikes\n   Time: 1-2 weeks\n   Risk: High\n   Trade-off: Higher operational risk";
+    introTh = "ประเด็นนี้กระทบ SLA โดยตรง จึงควรแก้ระบบก่อน";
+    introEn = "This directly affects SLA, so fix the system first";
     recommended = "A";
     confidenceTh = "กลาง";
     confidenceEn = "Medium";
     rationaleTh = "ส่งผลต่อ SLA ตรง จึงควรทำทันที";
     rationaleEn = "Direct SLA impact needs quick action";
   } else {
-    optionATh = `ทางออก A -- ปรับ Threshold เล็กน้อย
-  ทำอะไร   : ปรับ threshold เล็กน้อยเพื่อกันความเสี่ยง
-  ผลที่คาด  : ลดความผันผวนเล็กน้อย
-  ใช้เวลา   : ชั่วโมง-1 วัน
-  ความเสี่ยง: ต่ำ
-  ข้อแลก    : อาจกระทบ KPI อื่นเล็กน้อย
-  ผู้รับผิดชอบ: Model Ops`;
-    optionAEn = `Option A -- Minor threshold tune
-  Action: Small threshold adjustment
-  Expected: Slightly lower volatility
-  Time: Hours-1 day
-  Risk: Low
-  Trade-off: Small KPI trade-offs
-  Owner: Model Ops`;
-    optionBTh = `ทางออก B -- ทำ shadow test
-  ทำอะไร   : ทดสอบ model challenger แบบเงียบ
-  ผลที่คาด  : ได้ข้อมูลเพิ่มก่อนเปลี่ยนจริง
-  ใช้เวลา   : 3-7 วัน
-  ความเสี่ยง: ต่ำ
-  ข้อแลก    : ยังไม่แก้ปัญหาจริงทันที
-  ผู้รับผิดชอบ: Data Science`;
-    optionBEn = `Option B -- Shadow test
-  Action: Run challenger in shadow mode
-  Expected: More evidence before changes
-  Time: 3-7 days
-  Risk: Low
-  Trade-off: No immediate change
-  Owner: Data Science`;
-    optionCTh = `ทางออก C -- จับตาดูต่อ
-  ทำอะไร   : monitor KPI รายสัปดาห์
-  ผลที่คาด  : ถ้า KPI เริ่มหลุดเป้า จะค่อยทำ
-  ใช้เวลา   : ต่อเนื่อง
-  ความเสี่ยง: ต่ำ
-  ข้อแลก    : อาจช้าเกินถ้าเทรนด์เปลี่ยนเร็ว`;
-    optionCEn = `Option C -- Keep monitoring
-  Action: Weekly KPI checks
-  Expected: Act if KPIs drift below target
-  Time: Ongoing
-  Risk: Low
-  Trade-off: Slower response if trend shifts fast`;
+    optionATh = "1. ทางออก A: ปรับ Threshold เล็กน้อย\n   ทำอะไร   : ปรับ threshold เล็กน้อยเพื่อกันความเสี่ยง\n   ผลที่คาด  : ลดความผันผวนเล็กน้อย\n   ใช้เวลา   : ชั่วโมง-1 วัน\n   ความเสี่ยง: ต่ำ\n   ข้อแลก    : อาจกระทบ KPI อื่นเล็กน้อย\n   ผู้รับผิดชอบ: Model Ops";
+    optionAEn = "1. Option A: Minor threshold tune\n   Action: Small threshold adjustment\n   Expected: Slightly lower volatility\n   Time: Hours-1 day\n   Risk: Low\n   Trade-off: Small KPI trade-offs\n   Owner: Model Ops";
+    optionBTh = "2. ทางออก B: ทำ shadow test\n   ทำอะไร   : ทดสอบ model challenger แบบเงียบ\n   ผลที่คาด  : ได้ข้อมูลเพิ่มก่อนเปลี่ยนจริง\n   ใช้เวลา   : 3-7 วัน\n   ความเสี่ยง: ต่ำ\n   ข้อแลก    : ยังไม่แก้ปัญหาจริงทันที\n   ผู้รับผิดชอบ: Data Science";
+    optionBEn = "2. Option B: Run a shadow test\n   Action: Run challenger in shadow mode\n   Expected: More evidence before changes\n   Time: 3-7 days\n   Risk: Low\n   Trade-off: No immediate change\n   Owner: Data Science";
+    optionCTh = "3. ทางออก C: จับตาดูต่อ\n   ทำอะไร   : monitor KPI รายสัปดาห์\n   ผลที่คาด  : ถ้า KPI เริ่มหลุดเป้า จะค่อยทำ\n   ใช้เวลา   : ต่อเนื่อง\n   ความเสี่ยง: ต่ำ\n   ข้อแลก    : อาจช้าเกินถ้าเทรนด์เปลี่ยนเร็ว";
+    optionCEn = "3. Option C: Keep monitoring\n   Action: Weekly KPI checks\n   Expected: Act if KPIs drift below target\n   Time: Ongoing\n   Risk: Low\n   Trade-off: Slower response if trend shifts fast";
+    introTh = "KPI ส่วนใหญ่ยังอยู่ในเกณฑ์ จึงเน้นทางเลือกที่ปลอดภัยก่อน";
+    introEn = "Most KPIs are still in range, so prefer safer options first";
     recommended = "C";
     confidenceTh = "กลาง";
     confidenceEn = "Medium";
@@ -868,15 +844,18 @@ function buildRemediationMessage(key: KpiKey, signals: AllSignals, trace: RuleTr
       "---",
       `🛠️ ทางออกสำหรับ ${label.th}`,
       "",
+      introTh,
+      "",
+      `ARIA แนะนำ: ทางออก ${recommended}`,
+      `เหตุผล    : ${rationaleTh}`,
+      `ความมั่นใจ : ${confidenceTh}`,
+      "",
       optionATh,
       "",
       optionBTh,
       "",
       optionCTh,
       "",
-      `ARIA แนะนำ: ทางออก ${recommended}`,
-      `เหตุผล    : ${rationaleTh}`,
-      `ความมั่นใจ : ${confidenceTh}`,
       "ข้อควรระวัง: ถ้า pattern หรือ KPI เปลี่ยนเร็ว ให้ยกระดับทันที",
       "",
       "ขั้นตอนต่อไป:",
@@ -890,15 +869,18 @@ function buildRemediationMessage(key: KpiKey, signals: AllSignals, trace: RuleTr
       "---",
       `🛠️ Remediation options for ${label.en}`,
       "",
+      introEn,
+      "",
+      `ARIA recommends: Option ${recommended}`,
+      `Rationale: ${rationaleEn}`,
+      `Confidence: ${confidenceEn}`,
+      "",
       optionAEn,
       "",
       optionBEn,
       "",
       optionCEn,
       "",
-      `ARIA recommends: Option ${recommended}`,
-      `Rationale: ${rationaleEn}`,
-      `Confidence: ${confidenceEn}`,
       "Caveat: Escalate if KPI shifts sharply",
       "",
       "Next steps:",
