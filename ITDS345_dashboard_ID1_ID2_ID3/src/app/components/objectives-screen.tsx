@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircuitBoard,
+  Search,
 } from "lucide-react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -54,6 +55,39 @@ type Kpi = {
   trend: Trend;
   trendDelta: string;
   status: Status;
+};
+
+type SuspiciousAlert = {
+  transactionId: string;
+  amount: string;
+  riskScore: number;
+  corridor: string;
+  status: "Flagged" | "Under Review" | "Cleared";
+  pattern: string;
+  review: string;
+};
+
+const ALERT_ROWS: SuspiciousAlert[] = [
+  { transactionId: "TX-8842193", amount: "$1.25M", riskScore: 0.97, corridor: "TH → SG", status: "Flagged", pattern: "BIPARTITE", review: "Review →" },
+  { transactionId: "TX-8841502", amount: "$1.70M", riskScore: 0.95, corridor: "TH → HK", status: "Flagged", pattern: "GATHER-SCATTER", review: "Review →" },
+  { transactionId: "TX-8842155", amount: "$842.3K", riskScore: 0.93, corridor: "TH → HK", status: "Flagged", pattern: "FAN-OUT", review: "Review →" },
+  { transactionId: "TX-8842090", amount: "$512.8K", riskScore: 0.88, corridor: "Domestic", status: "Under Review", pattern: "CYCLE", review: "Review →" },
+  { transactionId: "TX-8841977", amount: "$298.4K", riskScore: 0.84, corridor: "TH → AE", status: "Flagged", pattern: "SCATTER-GATHER", review: "Review →" },
+  { transactionId: "TX-8841377", amount: "$421.0K", riskScore: 0.82, corridor: "TH → US", status: "Under Review", pattern: "FAN-OUT", review: "Review →" },
+  { transactionId: "TX-8841842", amount: "$188.1K", riskScore: 0.79, corridor: "Domestic", status: "Under Review", pattern: "STACK", review: "Review →" },
+  { transactionId: "TX-8841710", amount: "$96.5K", riskScore: 0.74, corridor: "TH → SG", status: "Under Review", pattern: "FAN-IN", review: "Review →" },
+  { transactionId: "TX-8841655", amount: "$72.2K", riskScore: 0.68, corridor: "Domestic", status: "Cleared", pattern: "RANDOM", review: "Review →" },
+];
+
+const BUSINESS_METRICS = {
+  detectedValue: "$54.72M",
+  totalAlerts: 134024,
+  suspiciousGrowth: "+9.6% / 10d",
+  crossBorderRatio: "73.1%",
+  crossBorderTone: "Critical",
+  queue: 12408,
+  escalated: 4982,
+  cleared: 116634,
 };
 
 const kpis: Kpi[] = [
@@ -309,7 +343,7 @@ function deriveActions(
   return { primary, secondary: recs };
 }
 
-export function ObjectivesScreen() {
+export function DetectionOverviewScreen() {
   const signals: AllSignals = useMemo(
     () => ({
       mcc: 0.55,
@@ -337,6 +371,7 @@ export function ObjectivesScreen() {
   const system = useMemo(() => deriveSystemStatus(kpis), []);
   const actions = useMemo(() => deriveActions(kpis, decision.action), [decision.action]);
   const tone = toneClasses[decision.tone];
+  const [transactionSearch, setTransactionSearch] = useState("");
 
   const [traceOpen, setTraceOpen] = useState(false);
   const traceRef = useRef<HTMLDivElement>(null);
@@ -435,26 +470,243 @@ export function ObjectivesScreen() {
           ? "เพิ่มประสิทธิภาพระบบก่อนปรับโมเดล"
           : "ทุกค่าอยู่ในเกณฑ์ที่ยอมรับได้";
 
+      const filteredAlerts = useMemo(
+        () => ALERT_ROWS.filter((row) => {
+          const query = transactionSearch.trim().toLowerCase();
+          if (!query) return true;
+          return [row.transactionId, row.amount, row.corridor, row.pattern, row.status]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+        }),
+        [transactionSearch],
+      );
+
   return (
     <div className="space-y-6">
+      {/* Business value overview */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <Card className="xl:col-span-2 p-5 rounded-2xl shadow-sm bg-white border-slate-200 overflow-hidden">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-slate-500" style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600 }}>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="lang-en">Step 1 · Detection Overview</span>
+                  <span className="lang-bi-sep text-slate-300">·</span>
+                  <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ขั้นตอน 1 · ภาพรวมการตรวจจับ</span>
+                </div>
+                <h1 className="text-slate-900 mt-1" style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
+                  <span className="lang-en">Detected Suspicious Value</span>
+                  <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>มูลค่าต้องสงสัยที่ตรวจพบ</span>
+                </h1>
+                <p className="text-slate-500 mt-2 max-w-2xl" style={{ fontSize: 13, lineHeight: 1.6 }}>
+                  <span className="lang-en">This screen translates model output into business value: how much suspicious value was intercepted, how much review pressure remains, and where to prioritize compliance effort.</span>
+                  <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>หน้านี้แปลงผลโมเดลเป็นมูลค่าทางธุรกิจ: ตรวจพบมูลค่าต้องสงสัยเท่าไร ยังมีภาระงานค้างเท่าไร และควรจัดลำดับการตรวจสอบตรงไหนก่อน</span>
+                </p>
+              </div>
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700" style={{ fontSize: 11, fontWeight: 700 }}>
+                <ShieldCheck className="w-3.5 h-3.5" /> AML-P-04 §3.2
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-slate-500 uppercase tracking-[0.5px]" style={{ fontSize: 11, fontWeight: 600 }}>Info / ข้อมูล</div>
+                <div className="mt-2 text-slate-900" style={{ fontSize: 34, lineHeight: 1, fontWeight: 800, letterSpacing: -0.8 }}>
+                  {BUSINESS_METRICS.detectedValue}
+                </div>
+                <div className="mt-2 text-slate-600" style={{ fontSize: 13 }}>
+                  <span className="lang-en">Estimated</span>
+                  <span className="lang-bi-sep"> / </span>
+                  <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ประมาณการ</span>
+                  <span className="text-slate-400"> — </span>
+                  <span className="lang-en">Scenario upper bound — not realized loss</span>
+                  <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ขอบบนตามสถานการณ์ — ยังไม่ใช่ความสูญเสียที่เกิดขึ้นจริง</span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-slate-400 uppercase" style={{ fontSize: 10, fontWeight: 600 }}>30D</div>
+                    <div className="mt-1 text-slate-900" style={{ fontSize: 18, fontWeight: 800 }}>{BUSINESS_METRICS.totalAlerts.toLocaleString()}</div>
+                    <div className="text-slate-500" style={{ fontSize: 11 }}>Total alerts</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-slate-400 uppercase" style={{ fontSize: 10, fontWeight: 600 }}>Trend</div>
+                    <div className="mt-1 text-slate-900" style={{ fontSize: 18, fontWeight: 800 }}>{BUSINESS_METRICS.suspiciousGrowth}</div>
+                    <div className="text-slate-500" style={{ fontSize: 11 }}>Suspicious tx growth</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-slate-400 uppercase" style={{ fontSize: 10, fontWeight: 600 }}>Policy</div>
+                    <div className="mt-1 text-slate-900" style={{ fontSize: 18, fontWeight: 800 }}>60%</div>
+                    <div className="text-slate-500" style={{ fontSize: 11 }}>Tolerance threshold</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-slate-500 uppercase tracking-[0.5px]" style={{ fontSize: 11, fontWeight: 600 }}>Operational signals</div>
+                <div className="mt-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
+                    <div>
+                      <div className="text-slate-500" style={{ fontSize: 11 }}>Total Alerts</div>
+                      <div className="text-slate-900" style={{ fontSize: 18, fontWeight: 800 }}>134,024</div>
+                    </div>
+                    <div className="text-right text-slate-500" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                      <div className="font-semibold text-slate-700">Flagged transactions</div>
+                      <div>30d window</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div>
+                        <div className="text-slate-500" style={{ fontSize: 11 }}>Cross-Border Ratio</div>
+                        <div className="text-rose-600" style={{ fontSize: 18, fontWeight: 800 }}>{BUSINESS_METRICS.crossBorderRatio}</div>
+                      </div>
+                      <div className="text-right" style={{ fontSize: 12 }}>
+                        <div className="font-semibold text-rose-600">Critical / วิกฤต</div>
+                        <div className="text-slate-500">Above 60% limit</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                        <div 
+                          className="h-full bg-rose-500"
+                          style={{ width: "73.1%" }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-rose-500" />
+                          <span className="text-slate-600">Cross-border: 73.1%</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-slate-300" />
+                          <span className="text-slate-600">Domestic: 26.9%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
+                    <div>
+                      <div className="text-slate-500" style={{ fontSize: 11 }}>Queue status</div>
+                      <div className="text-slate-900" style={{ fontSize: 18, fontWeight: 800 }}>Pending review</div>
+                    </div>
+                    <div className="text-right text-slate-500" style={{ fontSize: 12 }}>
+                      <div className="font-semibold text-slate-700">Queue / Escalated / Cleared</div>
+                      <div>12,408 / 4,982 / 116,634</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5 rounded-2xl shadow-sm bg-white border-slate-200">
+          <div className="text-slate-500 uppercase tracking-[0.5px]" style={{ fontSize: 11, fontWeight: 600 }}>Value at risk / มูลค่าที่เสี่ยง</div>
+          <div className="mt-2 text-slate-900" style={{ fontSize: 22, fontWeight: 800 }}>{BUSINESS_METRICS.crossBorderRatio}</div>
+          <div className="text-slate-600 mt-1" style={{ fontSize: 13 }}>
+            <span className="lang-en">Cross-border flow is above tolerance and creates the highest review pressure.</span>
+            <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ธุรกรรมข้ามประเทศสูงกว่าเกณฑ์และสร้างภาระการตรวจสอบมากที่สุด</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+              <span className="text-slate-500" style={{ fontSize: 12 }}>Queue</span>
+              <span className="font-semibold text-slate-900">12,408</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+              <span className="text-slate-500" style={{ fontSize: 12 }}>Escalated</span>
+              <span className="font-semibold text-slate-900">4,982</span>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+              <span className="text-slate-500" style={{ fontSize: 12 }}>Cleared</span>
+              <span className="font-semibold text-slate-900">116,634</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-5 rounded-2xl shadow-sm bg-white border-slate-200 overflow-hidden">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+            <div>
+              <div className="text-slate-500 uppercase tracking-[0.5px]" style={{ fontSize: 11, fontWeight: 600 }}>Alert Queue / คิวแจ้งเตือน</div>
+              <div className="text-slate-900 mt-1" style={{ fontSize: 18, fontWeight: 700 }}>Transactions pending compliance review</div>
+            </div>
+            <div className="flex items-center gap-2 text-slate-500 text-xs">
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 border border-slate-200">Queue</span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700">Escalated</span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">Cleared</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+            <div className="flex-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                value={transactionSearch}
+                onChange={(e) => setTransactionSearch(e.target.value)}
+                placeholder="Search transaction ID…"
+                aria-label="Search transaction ID"
+                className="w-full bg-transparent outline-none text-slate-700 placeholder:text-slate-400"
+                style={{ fontSize: 13 }}
+              />
+            </div>
+            <div className="text-slate-500 text-xs">Showing {filteredAlerts.length} of {ALERT_ROWS.length} alerts</div>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left" style={{ fontSize: 13 }}>
+              <thead className="bg-slate-50 text-slate-500" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                <tr>
+                  <th className="px-4 py-3">Transaction ID</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Risk Score</th>
+                  <th className="px-4 py-3">Corridor</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">FATF Pattern</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredAlerts.map((row) => {
+                  const statusColor = row.status === "Flagged" ? "text-rose-600" : row.status === "Under Review" ? "text-amber-600" : "text-emerald-600";
+                  const statusBadge = row.status === "Flagged" ? "bg-rose-50 border-rose-200 text-rose-700" : row.status === "Under Review" ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700";
+                  return (
+                    <tr key={row.transactionId} className="hover:bg-slate-50/70 align-top">
+                      <td className="px-4 py-3 font-semibold text-slate-900 tabular-nums">{row.transactionId}</td>
+                      <td className="px-4 py-3 text-slate-700 tabular-nums">{row.amount}</td>
+                      <td className={`px-4 py-3 font-semibold tabular-nums ${statusColor}`}>{row.riskScore.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.corridor}</td>
+                      <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-1 rounded-full border text-xs font-semibold ${statusBadge}`}>{row.status}</span></td>
+                      <td className="px-4 py-3 text-slate-700">{row.pattern}</td>
+                      <td className="px-4 py-3"><button type="button" className="text-blue-600 font-semibold hover:text-blue-700">{row.review}</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Card>
+
       {/* Header row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <div className="flex items-center gap-2 text-slate-500" style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600 }}>
-            <span className="lang-en">Step 1 · Decision Surface</span>
+            <span className="lang-en">Step 2 · Decision Surface</span>
             <span className="lang-bi-sep text-slate-300">·</span>
-            <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ขั้นตอน 1 · พื้นผิวการตัดสินใจ</span>
+            <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>ขั้นตอน 2 · พื้นผิวการตัดสินใจ</span>
           </div>
           <h1 className="text-slate-900 mt-1" style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.4 }}>
-            <span className="lang-en">Objectives & Success Metrics (KPI)</span>
-            <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>วัตถุประสงค์และตัวชี้วัดความสำเร็จ</span>
+            <span className="lang-en">Decision Detail & Model Health</span>
+            <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>รายละเอียดการตัดสินใจและสุขภาพของโมเดล</span>
           </h1>
           <div className="lang-th text-slate-500" style={{ fontSize: 13, fontFamily: "'Noto Sans Thai', sans-serif" }}>
-            วัตถุประสงค์และตัวชี้วัดความสำเร็จ
+            รายละเอียดการตัดสินใจและสุขภาพของโมเดล
           </div>
           <p className="text-slate-500 mt-1" style={{ fontSize: 13 }}>
             <span className="lang-en">
-              Model performance against defined strategic thresholds. This screen answers one question:{" "}
               <span className="text-slate-700" style={{ fontWeight: 600 }}>is the model still acceptable to use?</span>
             </span>
             <span className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>
@@ -926,3 +1178,5 @@ export function ObjectivesScreen() {
     </div>
   );
 }
+
+export const ObjectivesScreen = DetectionOverviewScreen;

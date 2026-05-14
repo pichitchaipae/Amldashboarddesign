@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { ObjectivesScreen } from "./components/objectives-screen";
+import { DetectionOverviewScreen } from "./components/objectives-screen";
 import { AriaScreen } from "./components/aria-screen";
 import { AmlDarkSkin, AriaFloatingButton, KpiMiniBar, UnifiedNav } from "./components/aml-shell";
 import { ToastHost } from "./components/aml-interactions";
 
 export default function App() {
-  const [screen, setScreen] = useState<"objectives" | "aria">("objectives");
+  const [screen, setScreen] = useState<"overview" | "aria">("overview");
 
   if (screen === "aria") {
     return (
@@ -25,7 +25,7 @@ export default function App() {
         <KpiMiniBar />
 
         <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-8">
-          <ObjectivesScreen />
+          <DetectionOverviewScreen />
         </main>
         <AriaFloatingButton onClick={() => setScreen("aria")} hasAlert />
         <ToastHost />

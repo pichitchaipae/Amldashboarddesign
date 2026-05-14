@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { KpiMiniBar, UnifiedNav, type ScreenId as ShellScreenId } from "./aml-shell";
 import { ModalButton, ModalShell, pushToast } from "./aml-interactions";
-import { evaluate, matchIntent, type AllSignals, type ChatResponse, type Decision, type RuleTrace } from "./decision-engine";
+import { L, useLang } from "./aml-language";
+import { evaluate, matchIntent, type AllSignals, type ChatResponse, type Decision, type RuleTrace, type ChatContext } from "./decision-engine";
 
 const C = {
   base: "#0A1628",
@@ -39,6 +40,15 @@ const FONT = "'Inter', 'Noto Sans Thai', system-ui, sans-serif";
 
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtRatio = (n: number, digits = 2) => n.toFixed(digits);
+
+const TH_MAP: Record<string, string> = {
+  "Ask for explanation": "ขอคำอธิบาย",
+  "Ask about drift status": "สอบถามสถานะการ Drift",
+  "Available queries": "คำถามที่ใช้ได้",
+  "Decision Trace": "ตรรกะการตัดสินใจ",
+  "Not sure yet": "ยังไม่แน่ใจ",
+  "Recommendation": "คำแนะนำ",
+};
 
 type KpiStatus = "pass" | "warn" | "fail";
 
@@ -85,6 +95,16 @@ type ChatMsg = {
   from: "bot" | "user";
   kind?: "text" | "system" | "action" | "risk" | "choices";
   body?: React.ReactNode;
+};
+
+type ChoiceAction = "retrain" | "schedule" | "detail" | "monitor" | "threshold" | "simulate" | "optimize" | "rollback";
+
+type ChatChoice = {
+  k: string;
+  label: string;
+  en: string;
+  tone: string;
+  action: ChoiceAction;
 };
 
 type ScreenId = ShellScreenId;
@@ -174,44 +194,134 @@ export function AriaScreen({
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [ruleModal, setRuleModal] = useState<null | "retrain" | "schedule" | "threshold" | "rollback">(null);
   const [rollbackInput, setRollbackInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [chatContext, setChatContext] = useState<ChatContext>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const suggestionChips = useMemo(() => {
+    if (decision.action === "Retrain_Model")
+      return [
+        { en: "Why retrain?", th: "ทำไมต้องฝึกโมเดลใหม่?" },
+        { en: "Check Concept Drift", th: "ตรวจสอบ Concept Drift" },
+        { en: "Show metrics", th: "แสดงตัวชี้วัด" },
+      ];
+    if (decision.action === "Tune_Model")
+      return [
+        { en: "Why tune threshold?", th: "ทำไมต้องปรับ Threshold?" },
+        { en: "Check Data Drift", th: "ตรวจสอบ Data Drift" },
+        { en: "Show feature power", th: "แสดงพลังของฟีเจอร์" },
+      ];
+    if (decision.action === "Optimize_System")
+      return [
+        { en: "System health details", th: "รายละเอียดสถานะระบบ" },
+        { en: "Check Latency", th: "ตรวจสอบ Latency" },
+      ];
+    return [
+      { en: "Check Data Quality", th: "ตรวจสอบคุณภาพข้อมูล" },
+      { en: "Verify metrics", th: "ยืนยันตัวชี้วัด" },
+    ];
+  }, [decision.action]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  const handleChoice = (label: string) => {
+  const handleChoice = (choice: ChatChoice) => {
+    pushToast({
+      tone: "green",
+      title: "Action Queued / รับคำสั่ง",
+      sub: `ดำเนินการ: [${choice.k}] ${choice.label}`,
+    });
+
     setMessages((prev) => [
       ...prev,
-      { id: `u-${Date.now()}`, from: "user", kind: "text", body: label },
+      { id: `u-${Date.now()}`, from: "user", kind: "text", body: `[${choice.k}] ${choice.label}` },
       {
         id: `b-${Date.now()}`,
         from: "bot",
         kind: "text",
         body: (
           <span>
-            ✅ คำสั่งรับเรียบร้อย: <b>{label}</b>. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.
+            <L
+              en={`✅ Command received: [${choice.k}] ${choice.label}. The action is queued and logged.`}
+              th={`✅ คำสั่งรับเรียบร้อย: [${choice.k}] ${choice.label}. ระบบจะดำเนินการตามขั้นตอนและบันทึกใน audit log.`}
+            />
           </span>
         ),
       },
     ]);
+
+    if (choice.action === "retrain") {
+      setRuleModal("retrain");
+      return;
+    }
+
+    if (choice.action === "schedule") {
+      setRuleModal("schedule");
+      return;
+    }
+
+    if (choice.action === "threshold") {
+      setRuleModal("threshold");
+      return;
+    }
+
+    if (choice.action === "rollback") {
+      setRuleModal("rollback");
+      return;
+    }
+
+    if (choice.action === "detail") {
+      setExpandedRule(8);
+      pushToast({ tone: "blue", title: "Opening details", sub: "ขยาย Rule 8 · Final Action" });
+      return;
+    }
+
+    if (choice.action === "monitor") {
+      pushToast({ tone: "amber", title: "Monitoring continued", sub: "กำลัง Monitor ต่อ — จะแจ้งเตือนเมื่อ KPI เปลี่ยน" });
+      return;
+    }
+
+    if (choice.action === "simulate") {
+      pushToast({ tone: "blue", title: "Simulation started", sub: "กำลังจำลองผลกระทบของ KPI" });
+      return;
+    }
+
+    if (choice.action === "optimize") {
+      pushToast({ tone: "amber", title: "Optimizing system", sub: "กำลังปรับปรุง resource และ latency" });
+    }
   };
 
-  const handleSend = () => {
-    const t = input.trim();
+  const handleSend = (textOverride?: string) => {
+    const source = typeof textOverride === "string" ? textOverride : input;
+    const t = source.trim();
     if (!t) return;
-    const response = matchIntent(t, signals, trace, decision);
+
+    setInput("");
     setMessages((prev) => [
       ...prev,
       { id: `u-${Date.now()}`, from: "user", kind: "text", body: t },
-      {
-        id: `b-${Date.now()}`,
-        from: "bot",
-        kind: "text",
-        body: renderChatResponse(response),
-      },
     ]);
-    setInput("");
+    
+    setIsTyping(true);
+    
+    // Simulate thinking delay
+    setTimeout(() => {
+      setChatContext(currentContext => {
+        const response = matchIntent(t, signals, trace, decision, currentContext);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `b-${Date.now()}`,
+            from: "bot",
+            kind: "text",
+            body: renderChatResponse(response, handleSend),
+          },
+        ]);
+        setIsTyping(false);
+        return response.nextContext || {};
+      });
+    }, 600);
   };
 
   return (
@@ -607,30 +717,30 @@ export function AriaScreen({
                   const choices =
                     decision.action === "Retrain_Model"
                       ? [
-                          { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red },
-                          { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber },
-                          { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue },
-                          { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                          { k: "A", label: "Re-train ทันที", en: "Re-train now", tone: C.red, action: "retrain" },
+                          { k: "B", label: "Re-train ช่วง Off-peak (02:00)", en: "Off-peak schedule", tone: C.amber, action: "schedule" },
+                          { k: "C", label: "ดู Detail ก่อน", en: "Review details", tone: C.blue, action: "detail" },
+                          { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                         ]
                       : decision.action === "Tune_Model"
                         ? [
-                            { k: "A", label: "Tune Threshold ตอนนี้", en: "Tune threshold", tone: C.amber },
-                            { k: "B", label: "Simulate KPI Impact", en: "Run simulation", tone: C.blue },
-                            { k: "C", label: "ดู Data Drift Detail", en: "Review drift detail", tone: C.blue },
-                            { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                            { k: "A", label: "Tune Threshold ตอนนี้", en: "Tune threshold", tone: C.amber, action: "threshold" },
+                            { k: "B", label: "Simulate KPI Impact", en: "Run simulation", tone: C.blue, action: "simulate" },
+                            { k: "C", label: "ดู Data Drift Detail", en: "Review drift detail", tone: C.blue, action: "detail" },
+                            { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                           ]
                         : decision.action === "Optimize_System"
                           ? [
-                              { k: "A", label: "Optimize ตอนนี้", en: "Optimize system", tone: C.blue },
-                              { k: "B", label: "Scale ช่วง Off-peak", en: "Off-peak scale", tone: C.amber },
-                              { k: "C", label: "ดู System Detail", en: "Review system detail", tone: C.blue },
-                              { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint },
+                              { k: "A", label: "Optimize ตอนนี้", en: "Optimize system", tone: C.blue, action: "optimize" },
+                              { k: "B", label: "Scale ช่วง Off-peak", en: "Off-peak scale", tone: C.amber, action: "schedule" },
+                              { k: "C", label: "ดู System Detail", en: "Review system detail", tone: C.blue, action: "detail" },
+                              { k: "D", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.faint, action: "monitor" },
                             ]
                           : [
-                              { k: "A", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.green },
-                              { k: "B", label: "ดู Rule Trace", en: "Review rule trace", tone: C.blue },
-                              { k: "C", label: "ดู KPI Detail", en: "Review KPI detail", tone: C.blue },
-                              { k: "D", label: "No Action", en: "No action", tone: C.faint },
+                              { k: "A", label: "Monitor ต่อ", en: "Continue monitoring", tone: C.green, action: "monitor" },
+                              { k: "B", label: "ดู Rule Trace", en: "Review rule trace", tone: C.blue, action: "detail" },
+                              { k: "C", label: "ดู KPI Detail", en: "Review KPI detail", tone: C.blue, action: "detail" },
+                              { k: "D", label: "No Action", en: "No action", tone: C.faint, action: "monitor" },
                             ];
                   return (
                     <div
@@ -645,7 +755,7 @@ export function AriaScreen({
                         <button
                           key={`choice-${c.k}`}
                           type="button"
-                          onClick={() => handleChoice(`[${c.k}] ${c.label}`)}
+                          onClick={() => handleChoice(c)}
                           style={{
                             background: C.cardHi,
                             border: `1px solid ${C.border}`,
@@ -786,6 +896,62 @@ export function AriaScreen({
                 );
               })}
             </div>
+            
+            {/* Typing Indicator */}
+            {isTyping && (
+              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 999,
+                    background: `${C.blue}22`,
+                    border: `1px solid ${C.blue}55`,
+                    color: "#7BB0F4",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Bot size={13} />
+                </div>
+                <div
+                  style={{
+                    maxWidth: "78%",
+                    background: C.cardHi,
+                    border: `1px solid ${C.border}`,
+                    color: C.subtext,
+                    borderRadius: 12,
+                    borderBottomLeftRadius: 4,
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span className="dot-typing"></span>
+                  <span className="dot-typing" style={{ animationDelay: "0.2s" }}></span>
+                  <span className="dot-typing" style={{ animationDelay: "0.4s" }}></span>
+                </div>
+              </div>
+            )}
+            
+            <style>{`
+              .dot-typing {
+                width: 5px;
+                height: 5px;
+                background-color: ${C.faint};
+                border-radius: 50%;
+                animation: typing 1s infinite;
+              }
+              @keyframes typing {
+                0%, 100% { opacity: 0.3; transform: translateY(0); }
+                50% { opacity: 1; transform: translateY(-2px); }
+              }
+            `}</style>
+            <SuggestionChips chips={suggestionChips} onSend={handleSend} />
 
             {/* Input bar */}
             <div
@@ -847,7 +1013,7 @@ export function AriaScreen({
               </div>
               <button
                 type="button"
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 aria-label="Send"
                 style={{
                   width: 40,
@@ -999,7 +1165,7 @@ export function AriaScreen({
         }
       >
         <div style={{ fontSize: 13, color: C.subtext, lineHeight: 1.6 }}>
-          Lower τ → higher Recall, higher FPR. Adjust slider in detail panel preview.
+          Lower τ → higher Recall, lower Precision. Adjust slider in detail panel preview.
         </div>
       </ModalShell>
 
@@ -1383,6 +1549,12 @@ function buildRuleCards(signals: AllSignals, trace: RuleTrace, decision: Decisio
 function buildInitialMessages(decision: Decision, trace: RuleTrace, signals: AllSignals): ChatMsg[] {
   const conceptColor = trace.conceptDrift.result === "Drifted" ? C.red : C.green;
   const dataColor = trace.dataDrift.result === "Drifted" ? C.red : C.green;
+  const decisionColor =
+    decision.tone === "red"
+      ? C.red
+      : decision.tone === "orange" || decision.tone === "yellow"
+        ? C.amber
+        : C.green;
   const systemMessage = (
     <span>
       <b style={{ color: conceptColor }}>
@@ -1393,7 +1565,48 @@ function buildInitialMessages(decision: Decision, trace: RuleTrace, signals: All
       <span style={{ color: dataColor }}>Data Drift {trace.dataDrift.result}</span>
     </span>
   );
+  
+  const greetingMessage = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="lang-en">
+        <div style={{ fontWeight: 700 }}>ARIA - Decision Support System | AML Risk Intelligence</div>
+        <div style={{ marginTop: 6 }}>
+          Hello. I'm ARIA, your analytical advisor for KPI monitoring and risk decision support. I can help you with:
+        </div>
+        <ol style={{ margin: "8px 0 0 18px", color: C.subtext }}>
+          <li>KPI status check - current values, thresholds, and trend context</li>
+          <li>Root cause analysis - why a KPI is behaving the way it is</li>
+          <li>Remediation options - structured plan with trade-offs for each choice</li>
+          <li>Scenario analysis - projected impact of proposed changes</li>
+          <li>Weekly digest - full performance summary with priority focus areas</li>
+        </ol>
+        <div style={{ marginTop: 6 }}>
+          Current recommendation: <b style={{ color: decisionColor }}>{decision.tag}</b>.
+        </div>
+        <div style={{ marginTop: 6 }}>What would you like to analyze?</div>
+      </div>
+      <div className="lang-th" style={{ fontFamily: "'Noto Sans Thai', sans-serif" }}>
+        <div style={{ fontWeight: 700 }}>ARIA - ระบบสนับสนุนการตัดสินใจ | ข่าวกรองความเสี่ยง AML</div>
+        <div style={{ marginTop: 6 }}>
+          สวัสดี ฉันคือ ARIA ที่ปรึกษาวิเคราะห์สำหรับการติดตาม KPI และการสนับสนุนการตัดสินใจด้านความเสี่ยง ฉันช่วยคุณได้ในเรื่อง:
+        </div>
+        <ol style={{ margin: "8px 0 0 18px", color: C.subtext }}>
+          <li>ตรวจสอบสถานะ KPI - ค่าปัจจุบัน เกณฑ์ และบริบทแนวโน้ม</li>
+          <li>วิเคราะห์สาเหตุหลัก - ทำไม KPI จึงเป็นแบบนี้</li>
+          <li>ตัวเลือกการแก้ไข - แผนทางเลือกพร้อมข้อแลกเปลี่ยน</li>
+          <li>การวิเคราะห์สถานการณ์ - ผลกระทบที่คาดจากการเปลี่ยนแปลง</li>
+          <li>สรุปรายสัปดาห์ - ภาพรวมผลการดำเนินงานและประเด็นสำคัญ</li>
+        </ol>
+        <div style={{ marginTop: 6 }}>
+          คำแนะนำปัจจุบัน: <b style={{ color: decisionColor }}>{decision.tag}</b>.
+        </div>
+        <div style={{ marginTop: 6 }}>ต้องการให้ช่วยวิเคราะห์เรื่องใด?</div>
+      </div>
+    </div>
+  );
+
   const base: ChatMsg[] = [
+    { id: "intro-0", from: "bot", kind: "text", body: greetingMessage },
     { id: "sys-1", from: "bot", kind: "system", body: systemMessage },
     { id: "rec-1", from: "bot", kind: "action" },
     { id: "ch-1", from: "bot", kind: "choices" },
@@ -1404,136 +1617,108 @@ function buildInitialMessages(decision: Decision, trace: RuleTrace, signals: All
   return base;
 }
 
-function renderChatResponse(response: ChatResponse): React.ReactNode {
+function renderChatResponse(response: ChatResponse, onSend: (msg: string) => void): React.ReactNode {
+  const getEn = (item: any) => typeof item === 'string' ? item : item?.en || '';
+  const getTh = (item: any) => typeof item === 'string' ? (TH_MAP[item] ?? item) : item?.th || item?.en || '';
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontWeight: 700 }}>{response.title}</div>
-      <div style={{ color: C.text }}>{response.message}</div>
+      <div style={{ fontWeight: 700 }}><L en={getEn(response.title)} th={getTh(response.title)} /></div>
+      <div style={{ color: C.text, whiteSpace: "pre-line" }}><L en={getEn(response.message)} th={getTh(response.message)} /></div>
       {response.details && response.details.length > 0 && (
-        <ul style={{ margin: 0, paddingLeft: 16, color: C.subtext }}>
+        <ol style={{ margin: 0, paddingLeft: 18, color: C.subtext, display: "flex", flexDirection: "column", gap: 6 }}>
           {response.details.map((d, i) => (
-            <li key={`d-${i}`}>{d}</li>
+            <li key={`d-${i}`} style={{ whiteSpace: "pre-line" }}><L en={getEn(d)} th={getTh(d)} /></li>
           ))}
-        </ul>
+        </ol>
       )}
       {response.followups && response.followups.length > 0 && (
-        <div style={{ color: C.faint, fontSize: 11 }}>Try: {response.followups.join(" · ")}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+          {response.followups.map((f, i) => {
+            const sendVal = typeof f === 'string' ? f : f.en;
+            return (
+              <button
+                key={`f-${i}`}
+                type="button"
+                onClick={() => onSend(sendVal)}
+                aria-label={`Follow up: ${getEn(f)}`}
+                style={{
+                  background: "rgba(30,111,217,0.15)",
+                  border: `1px solid rgba(30,111,217,0.4)`,
+                  color: "#7BB0F4",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  fontFamily: FONT,
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.background = "rgba(30,111,217,0.25)")}
+                onMouseOut={(e) => (e.currentTarget.style.background = "rgba(30,111,217,0.15)")}
+              >
+                <L en={getEn(f)} th={getTh(f)} />
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-const RULE_DATA: Record<number, RuleDetailData> = {
-  1: {
-    status: "CLEAR",
-    accent: C.green,
-    conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "≤ 20%", current: "16.4%", pass: true },
-      { cond: "Flagged Rate", target: "≤ 5%", current: "8.7%", pass: false },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "≥ 30%", current: "29.1%", pass: false },
-      { cond: "System Status", target: "OK", current: "OK", pass: true },
-      { cond: "Drift Detected", target: "No", current: "Yes", pass: false },
-    ],
-    note: { tone: "amber", en: "Rule 1 requires ALL conditions met. Current data does not satisfy Rule 1.", th: "Rule 1 ต้องผ่านทุกเงื่อนไข — ปัจจุบันยังไม่ครบ" },
-    lastTriggered: "Never triggered / ไม่เคย trigger",
-    actions: [],
-  },
-  2: {
-    status: "TRIGGERED",
-    accent: C.red,
-    conditions: [
-      { cond: "Recall", target: "< 85%", current: "78.0%", pass: true },
-      { cond: "Drift Detected", target: "Yes", current: "Yes", pass: true },
-      { cond: "Pattern Coverage", target: "< 80%", current: "75.0%", pass: true },
-      { cond: "Precision", target: "< 30%", current: "29.1%", pass: true },
-    ],
-    shap: [
-      { feature: "transaction_velocity", weight: 0.34, tone: "red" },
-      { feature: "amount_zscore", weight: 0.21, tone: "red" },
-      { feature: "time_since_last_txn", weight: 0.18, tone: "amber" },
-    ],
-    logic: [
-      "IF Drift == 'Yes'",
-      "AND (Recall < 0.85",
-      "     OR Pattern_Coverage < 0.80",
-      "     OR Precision < 0.30)",
-      "THEN 'RE-TRAIN MODEL'",
-    ],
-    lastTriggered: "Today 09:42 / วันนี้ 09:42",
-    actions: ["retrain", "schedule", "monitor"],
-  },
-  3: {
-    status: "ACTIVE",
-    accent: C.amber,
-    conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "> 20%", current: "16.4%", pass: false },
-      { cond: "Flagged Rate", target: "> 5%", current: "8.7%", pass: true },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "< 30%", current: "29.1%", pass: true },
-      { cond: "Drift", target: "No", current: "Yes", pass: false },
-    ],
-    note: { tone: "amber", en: "Some conditions pass — rule not fully triggered.", th: "บางเงื่อนไขผ่าน — Rule ยังไม่ fully triggered" },
-    logic: [
-      "IF Recall >= 0.85 AND Pattern_Coverage >= 0.80",
-      "AND FPR > 0.20 AND Flagged_Rate > 0.05",
-      "AND Precision < 0.30 AND Drift == 'No'",
-      "THEN 'TUNE THRESHOLD / SENSITIVITY'",
-    ],
-    lastTriggered: "3 days ago / 3 วันที่แล้ว",
-    actions: ["threshold", "simulate"],
-  },
-  4: {
-    status: "CLEAR",
-    accent: C.green,
-    conditions: [
-      { cond: "Recall", target: "≥ 85%", current: "78.0%", pass: false },
-      { cond: "FPR", target: "≤ 20%", current: "16.4%", pass: true },
-      { cond: "Flagged Rate", target: "≤ 5%", current: "8.7%", pass: false },
-      { cond: "Pattern Coverage", target: "≥ 80%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "≥ 30%", current: "29.1%", pass: false },
-      { cond: "Drift", target: "No", current: "Yes", pass: false },
-      { cond: "System Status", target: "Not OK", current: "OK", pass: false },
-    ],
-    note: { tone: "green", en: "System healthy — Rule 4 not triggered.", th: "ระบบทำงานปกติ — Rule 4 ไม่ถูก trigger" },
-    logic: [
-      "IF Recall >= 0.85 AND FPR <= 0.20",
-      "AND Flagged_Rate <= 0.05 AND Pattern_Coverage >= 0.80",
-      "AND Precision >= 0.30 AND Drift == 'No'",
-      "AND System == 'Not OK'",
-      "THEN 'OPTIMIZE SYSTEM / RESOURCE'",
-    ],
-    systemHealth: { latency: "OK", cpu: "67%", memory: "Normal" },
-    lastTriggered: "Never / ไม่เคย",
-    actions: [],
-  },
-  5: {
-    status: "CLEAR",
-    accent: C.green,
-    conditions: [
-      { cond: "Recall", target: "< 50%", current: "78.0%", pass: false },
-      { cond: "Pattern Coverage", target: "< 50%", current: "75.0%", pass: false },
-      { cond: "Precision", target: "< 10%", current: "29.1%", pass: false },
-      { cond: "Drift", target: "Yes", current: "Yes", pass: true },
-    ],
-    note: { tone: "green", en: "Recall and Precision still above emergency floor — rollback not required.", th: "Recall และ Precision ยังอยู่เหนือเกณฑ์ฉุกเฉิน — ไม่จำเป็นต้อง Rollback" },
-    logic: [
-      "IF Drift == 'Yes'",
-      "AND (Recall < 0.50",
-      "     OR Pattern_Coverage < 0.50",
-      "     OR Precision < 0.10)",
-      "THEN 'EMERGENCY ROLLBACK'",
-    ],
-    warning: {
-      en: "If Recall continues to drop to 50%, this rule will auto-trigger. Gap to trigger: -28% Recall.",
-      th: "หาก Recall ลดลงต่อเนื่องถึง 50% Rule นี้จะถูก trigger อัตโนมัติ · ระยะห่างจาก trigger: Recall ต้องลดอีก 28%",
-    },
-    lastTriggered: "Never / ไม่เคย",
-    actions: ["rollback"],
-  },
-};
+function SuggestionChips({ chips, onSend }: { chips: { en: string; th?: string }[]; onSend: (msg: string) => void }) {
+  const lang = useLang();
+  if (!chips || chips.length === 0) return null;
+  return (
+    <div
+      style={{
+        padding: "8px 14px",
+        borderTop: `1px solid ${C.border}`,
+        display: "flex",
+        gap: 8,
+        overflowX: "auto",
+        scrollbarWidth: "none",
+        background: C.card,
+      }}
+    >
+      {chips.map((chip) => {
+        const labelEn = chip.en;
+        const labelTh = chip.th ?? chip.en;
+        const sendText = lang === "th" ? labelTh : labelEn;
+        return (
+          <button
+            key={labelEn}
+            type="button"
+            onClick={() => onSend(sendText)}
+            aria-label={`Suggest: ${labelEn}`}
+            style={{
+              background: C.base,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              padding: "6px 12px",
+              borderRadius: 999,
+              fontSize: 12,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              fontFamily: FONT,
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.border = `1px solid ${C.blue}88`;
+              e.currentTarget.style.color = "#7BB0F4";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.border = `1px solid ${C.border}`;
+              e.currentTarget.style.color = C.text;
+            }}
+          >
+            <L en={labelEn} th={labelTh} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function RuleDetailPanel({
   data,
@@ -1690,29 +1875,22 @@ function RuleDetailPanel({
               <div key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\b(IF|AND|OR|THEN)\b/g, `<span style="color:${C.blue};font-weight:700">$1</span>`) }} />
             ))}
           </pre>
-        </div>
-      )}
-
-      {/* System health (Rule 4) */}
-      {data.systemHealth && (
-        <div>
-          <div style={{ fontSize: 11, color: C.subtext, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
-            System Health
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 12 }}>
-            <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Latency</div>
-              <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.latency} ✓</div>
+          {data.systemHealth && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, fontSize: 12, marginTop: 12 }}>
+              <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Latency</div>
+                <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.latency} ✓</div>
+              </div>
+              <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.08)", border: `1px solid ${C.amber}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>CPU</div>
+                <div style={{ color: C.amber, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.cpu}</div>
+              </div>
+              <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
+                <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Memory</div>
+                <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.memory} ✓</div>
+              </div>
             </div>
-            <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.08)", border: `1px solid ${C.amber}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>CPU</div>
-              <div style={{ color: C.amber, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.cpu}</div>
-            </div>
-            <div style={{ padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: `1px solid ${C.green}55`, borderRadius: 8 }}>
-              <div style={{ color: C.subtext, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Memory</div>
-              <div style={{ color: C.green, fontWeight: 700, marginTop: 2 }}>{data.systemHealth.memory} ✓</div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
